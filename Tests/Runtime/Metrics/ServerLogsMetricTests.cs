@@ -4,8 +4,8 @@ using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using Unity.Multiplayer.Tools.MetricTypes;
-using Unity.Netcode.RuntimeTests.Metrics.Utility;
 using UnityEngine.TestTools;
+using Unity.Netcode.TestHelpers.Runtime.Metrics;
 
 namespace Unity.Netcode.RuntimeTests.Metrics
 {
@@ -19,10 +19,13 @@ namespace Unity.Netcode.RuntimeTests.Metrics
         [UnityTest]
         public IEnumerator TrackServerLogSentMetric()
         {
-            var waitForSentMetric = new WaitForMetricValues<ServerLogEvent>(ClientMetrics.Dispatcher, NetworkMetricTypes.ServerLogSent);
+            var waitForSentMetric = new WaitForEventMetricValues<ServerLogEvent>(ClientMetrics.Dispatcher, NetworkMetricTypes.ServerLogSent);
 
             var message = Guid.NewGuid().ToString();
+            Client.LogLevel = LogLevel.Developer;
+            Server.LogLevel = LogLevel.Developer;
             NetworkLog.LogWarningServer(message);
+            yield return s_DefaultWaitForTick;
 
             yield return waitForSentMetric.WaitForMetricsReceived();
 
@@ -38,10 +41,14 @@ namespace Unity.Netcode.RuntimeTests.Metrics
         [UnityTest]
         public IEnumerator TrackServerLogReceivedMetric()
         {
-            var waitForReceivedMetric = new WaitForMetricValues<ServerLogEvent>(ServerMetrics.Dispatcher, NetworkMetricTypes.ServerLogReceived);
+            var waitForReceivedMetric = new WaitForEventMetricValues<ServerLogEvent>(ServerMetrics.Dispatcher, NetworkMetricTypes.ServerLogReceived);
 
             var message = Guid.NewGuid().ToString();
+            Client.LogLevel = LogLevel.Developer;
+            Server.LogLevel = LogLevel.Developer;
             NetworkLog.LogWarningServer(message);
+
+            yield return s_DefaultWaitForTick;
 
             yield return waitForReceivedMetric.WaitForMetricsReceived();
 

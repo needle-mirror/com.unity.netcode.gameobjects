@@ -2,22 +2,22 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "1.0.0-pre.9",
+  "version": "1.0.0-pre.10",
   "unity": "2020.3",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.10.1",
-    "com.unity.transport": "1.0.0"
+    "com.unity.transport": "1.1.0"
   },
   "_upm": {
-    "changelog": "### Fixed\n\n- Fixed Hosting again after failing to host now works correctly (#1938)\n- Fixed NetworkManager to cleanup connected client lists after stopping (#1945)\n- Fixed NetworkHide followed by NetworkShow on the same frame works correctly (#1940)"
+    "changelog": "### Added\n\n- Added a new `OnTransportFailure` callback to `NetworkManager`. This callback is invoked when the manager's `NetworkTransport` encounters an unrecoverable error. Transport failures also cause the `NetworkManager` to shut down. Currently, this is only used by `UnityTransport` to signal a timeout of its connection to the Unity Relay servers. (#1994)\n- Added `NetworkEvent.TransportFailure`, which can be used by implementations of `NetworkTransport` to signal to `NetworkManager` that an unrecoverable error was encountered. (#1994)\n- Added test to ensure a warning occurs when nesting NetworkObjects in a NetworkPrefab (#1969)\n- Added `NetworkManager.RemoveNetworkPrefab(...)` to remove a prefab from the prefabs list (#1950)\n\n### Changed\n\n- Updated `UnityTransport` dependency on `com.unity.transport` to 1.1.0. (#2025)\n- (API Breaking) `ConnectionApprovalCallback` is no longer an `event` and will not allow more than 1 handler registered at a time. Also, `ConnectionApprovalCallback` is now a `Func<>` taking `ConnectionApprovalRequest` in and returning `ConnectionApprovalResponse` back out (#1972)\n\n### Removed\n\n### Fixed\n- Fixed issue where dynamically spawned `NetworkObject`s could throw an exception if the scene of origin handle was zero (0) and the `NetworkObject` was already spawned. (#2017)\n- Fixed issue where `NetworkObject.Observers` was not being cleared when despawned. (#2009)\n- Fixed `NetworkAnimator` could not run in the server authoritative mode. (#2003)\n- Fixed issue where late joining clients would get a soft synchronization error if any in-scene placed NetworkObjects were parented under another `NetworkObject`. (#1985)\n- Fixed issue where `NetworkBehaviourReference` would throw a type cast exception if using `NetworkBehaviourReference.TryGet` and the component type was not found. (#1984)\n- Fixed `NetworkSceneManager` was not sending scene event notifications for the currently active scene and any additively loaded scenes when loading a new scene in `LoadSceneMode.Single` mode. (#1975)\n- Fixed issue where one or more clients disconnecting during a scene event would cause `LoadEventCompleted` or `UnloadEventCompleted` to wait until the `NetworkConfig.LoadSceneTimeOut` period before being triggered. (#1973)\n- Fixed issues when multiple `ConnectionApprovalCallback`s were registered (#1972)\n- Fixed a regression in serialization support: `FixedString`, `Vector2Int`, and `Vector3Int` types can now be used in NetworkVariables and RPCs again without requiring a `ForceNetworkSerializeByMemcpy<>` wrapper. (#1961)\n- Fixed generic types that inherit from NetworkBehaviour causing crashes at compile time. (#1976)\n- Fixed endless dialog boxes when adding a `NetworkBehaviour` to a `NetworkManager` or vice-versa. (#1947)\n- Fixed `NetworkAnimator` issue where it was only synchronizing parameters if the layer or state changed or was transitioning between states. (#1946)\n- Fixed `NetworkAnimator` issue where when it did detect a parameter had changed it would send all parameters as opposed to only the parameters that changed. (#1946)\n- Fixed `NetworkAnimator` issue where it was not always disposing the `NativeArray` that is allocated when spawned. (#1946)\n- Fixed `NetworkAnimator` issue where it was not taking the animation speed or state speed multiplier into consideration. (#1946)\n- Fixed `NetworkAnimator` issue where it was not properly synchronizing late joining clients if they joined while `Animator` was transitioning between states. (#1946)\n- Fixed `NetworkAnimator` issue where the server was not relaying changes to non-owner clients when a client was the owner. (#1946)\n- Fixed issue where the `PacketLoss` metric for tools would return the packet loss over a connection lifetime instead of a single frame. (#2004)"
   },
   "upmCi": {
-    "footprint": "ed33b1bdf8c343399eadd7640f4e9caa4ed07776"
+    "footprint": "13bd9771fd94050d43c32b238d73617da4b2389d"
   },
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "cdca1eb844973e9f314f6a263bb4c0497d9e396f"
+    "revision": "d1302ce0b946a675f49425dbd11ee2c4afe89d3f"
   },
   "samples": [
     {

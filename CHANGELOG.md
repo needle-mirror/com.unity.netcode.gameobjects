@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [1.0.0] - 2022-06-27
+
+### Changed
+
+- Changed version to 1.0.0. (#2046)
+
 ## [1.0.0-pre.10] - 2022-06-21
 
 ### Added
@@ -18,7 +24,7 @@ Additional documentation and release notes are available at [Multiplayer Documen
 ### Changed
 
 - Updated `UnityTransport` dependency on `com.unity.transport` to 1.1.0. (#2025)
-- (API Breaking) `ConnectionApprovalCallback` is no longer an `event` and will not allow more than 1 handler registered at a time. Also, `ConnectionApprovalCallback` is now a `Func<>` taking `ConnectionApprovalRequest` in and returning `ConnectionApprovalResponse` back out (#1972)
+- (API Breaking) `ConnectionApprovalCallback` is no longer an `event` and will not allow more than 1 handler registered at a time. Also, `ConnectionApprovalCallback` is now an `Action<>` taking a `ConnectionApprovalRequest` and a `ConnectionApprovalResponse` that the client code must fill (#1972) (#2002)
 
 ### Removed
 

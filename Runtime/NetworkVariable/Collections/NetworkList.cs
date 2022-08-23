@@ -63,6 +63,11 @@ namespace Unity.Netcode
             return base.IsDirty() || m_DirtyEvents.Length > 0;
         }
 
+        internal void MarkNetworkObjectDirty()
+        {
+            m_NetworkBehaviour.NetworkManager.MarkNetworkObjectDirty(m_NetworkBehaviour.NetworkObject);
+        }
+
         /// <inheritdoc />
         public override void WriteDelta(FastBufferWriter writer)
         {
@@ -122,10 +127,26 @@ namespace Unity.Netcode
         /// <inheritdoc />
         public override void WriteField(FastBufferWriter writer)
         {
-            writer.WriteValueSafe((ushort)m_ListAtLastReset.Length);
-            for (int i = 0; i < m_ListAtLastReset.Length; i++)
+            // The listAtLastReset mechanism was put in place to deal with duplicate adds
+            // upon initial spawn. However, it causes issues with in-scene placed objects
+            // due to difference in spawn order. In order to address this, we pick the right
+            // list based on the type of object.
+            bool isSceneObject = m_NetworkBehaviour.NetworkObject.IsSceneObject != false;
+            if (isSceneObject)
             {
-                NetworkVariableSerialization<T>.Write(writer, ref m_ListAtLastReset.ElementAt(i));
+                writer.WriteValueSafe((ushort)m_ListAtLastReset.Length);
+                for (int i = 0; i < m_ListAtLastReset.Length; i++)
+                {
+                    NetworkVariableSerialization<T>.Write(writer, ref m_ListAtLastReset.ElementAt(i));
+                }
+            }
+            else
+            {
+                writer.WriteValueSafe((ushort)m_List.Length);
+                for (int i = 0; i < m_List.Length; i++)
+                {
+                    NetworkVariableSerialization<T>.Write(writer, ref m_List.ElementAt(i));
+                }
             }
         }
 
@@ -173,6 +194,7 @@ namespace Unity.Netcode
                                     Index = m_List.Length - 1,
                                     Value = m_List[m_List.Length - 1]
                                 });
+                                MarkNetworkObjectDirty();
                             }
                         }
                         break;
@@ -180,8 +202,16 @@ namespace Unity.Netcode
                         {
                             reader.ReadValueSafe(out int index);
                             NetworkVariableSerialization<T>.Read(reader, out T value);
-                            m_List.InsertRangeWithBeginEnd(index, index + 1);
-                            m_List[index] = value;
+
+                            if (index < m_List.Length)
+                            {
+                                m_List.InsertRangeWithBeginEnd(index, index + 1);
+                                m_List[index] = value;
+                            }
+                            else
+                            {
+                                m_List.Add(value);
+                            }
 
                             if (OnListChanged != null)
                             {
@@ -201,6 +231,7 @@ namespace Unity.Netcode
                                     Index = index,
                                     Value = m_List[index]
                                 });
+                                MarkNetworkObjectDirty();
                             }
                         }
                         break;
@@ -233,6 +264,7 @@ namespace Unity.Netcode
                                     Index = index,
                                     Value = value
                                 });
+                                MarkNetworkObjectDirty();
                             }
                         }
                         break;
@@ -260,6 +292,7 @@ namespace Unity.Netcode
                                     Index = index,
                                     Value = value
                                 });
+                                MarkNetworkObjectDirty();
                             }
                         }
                         break;
@@ -295,6 +328,7 @@ namespace Unity.Netcode
                                     Value = value,
                                     PreviousValue = previousValue
                                 });
+                                MarkNetworkObjectDirty();
                             }
                         }
                         break;
@@ -317,6 +351,7 @@ namespace Unity.Netcode
                                 {
                                     Type = eventType
                                 });
+                                MarkNetworkObjectDirty();
                             }
                         }
                         break;
@@ -403,8 +438,15 @@ namespace Unity.Netcode
         /// <inheritdoc />
         public void Insert(int index, T item)
         {
-            m_List.InsertRangeWithBeginEnd(index, index + 1);
-            m_List[index] = item;
+            if (index < m_List.Length)
+            {
+                m_List.InsertRangeWithBeginEnd(index, index + 1);
+                m_List[index] = item;
+            }
+            else
+            {
+                m_List.Add(item);
+            }
 
             var listEvent = new NetworkListEvent<T>()
             {
@@ -436,13 +478,15 @@ namespace Unity.Netcode
             get => m_List[index];
             set
             {
+                var previousValue = m_List[index];
                 m_List[index] = value;
 
                 var listEvent = new NetworkListEvent<T>()
                 {
                     Type = NetworkListEvent<T>.EventType.Value,
                     Index = index,
-                    Value = value
+                    Value = value,
+                    PreviousValue = previousValue
                 };
 
                 HandleAddListEvent(listEvent);
@@ -452,6 +496,7 @@ namespace Unity.Netcode
         private void HandleAddListEvent(NetworkListEvent<T> listEvent)
         {
             m_DirtyEvents.Add(listEvent);
+            MarkNetworkObjectDirty();
             OnListChanged?.Invoke(listEvent);
         }
 

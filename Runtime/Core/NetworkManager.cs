@@ -54,7 +54,12 @@ namespace Unity.Netcode
             return $"{nameof(NetworkPrefab)} \"{networkPrefab.Prefab.gameObject.name}\"";
         }
 
-        internal NetworkBehaviourUpdater BehaviourUpdater { get; private set; }
+        internal NetworkBehaviourUpdater BehaviourUpdater { get; set; }
+
+        internal void MarkNetworkObjectDirty(NetworkObject networkObject)
+        {
+            BehaviourUpdater.AddForUpdate(networkObject);
+        }
 
         internal MessagingSystem MessagingSystem { get; private set; }
 
@@ -1384,6 +1389,19 @@ namespace Unity.Netcode
             }
 
             IsConnectedClient = false;
+
+            // We need to clean up NetworkObjects before we reset the IsServer
+            // and IsClient properties. This provides consistency of these two
+            // property values for NetworkObjects that are still spawned when
+            // the shutdown cycle begins.
+            if (SpawnManager != null)
+            {
+                SpawnManager.DespawnAndDestroyNetworkObjects();
+                SpawnManager.ServerResetShudownStateForSceneObjects();
+
+                SpawnManager = null;
+            }
+
             IsServer = false;
             IsClient = false;
 
@@ -1404,14 +1422,6 @@ namespace Unity.Netcode
             if (NetworkConfig?.NetworkTransport != null)
             {
                 NetworkConfig.NetworkTransport.OnTransportEvent -= HandleRawTransportPoll;
-            }
-
-            if (SpawnManager != null)
-            {
-                SpawnManager.DespawnAndDestroyNetworkObjects();
-                SpawnManager.ServerResetShudownStateForSceneObjects();
-
-                SpawnManager = null;
             }
 
             if (DeferredMessageManager != null)
@@ -2059,6 +2069,20 @@ namespace Unity.Netcode
                     }
 
                     SendMessage(ref message, NetworkDelivery.ReliableFragmentedSequenced, ownerClientId);
+
+                    for (int index = 0; index < MessagingSystem.MessageHandlers.Length; index++)
+                    {
+                        if (MessagingSystem.MessageTypes[index] != null)
+                        {
+                            var orderingMessage = new OrderingMessage
+                            {
+                                Order = index,
+                                Hash = XXHash.Hash32(MessagingSystem.MessageTypes[index].FullName)
+                            };
+
+                            SendMessage(ref orderingMessage, NetworkDelivery.ReliableFragmentedSequenced, ownerClientId);
+                        }
+                    }
 
                     // If scene management is enabled, then let NetworkSceneManager handle the initial scene and NetworkObject synchronization
                     if (!NetworkConfig.EnableSceneManagement)

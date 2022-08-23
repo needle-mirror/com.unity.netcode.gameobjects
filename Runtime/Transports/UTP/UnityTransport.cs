@@ -158,11 +158,11 @@ namespace Unity.Netcode.Transports.UTP
             set => m_MaxPacketQueueSize = value;
         }
 
-        [Tooltip("The maximum size of a payload that can be handled by the transport.")]
+        [Tooltip("The maximum size of an unreliable payload that can be handled by the transport.")]
         [SerializeField]
         private int m_MaxPayloadSize = InitialMaxPayloadSize;
 
-        /// <summary>The maximum size of a payload that can be handled by the transport.</summary>
+        /// <summary>The maximum size of an unreliable payload that can be handled by the transport.</summary>
         public int MaxPayloadSize
         {
             get => m_MaxPayloadSize;
@@ -1148,13 +1148,13 @@ namespace Unity.Netcode.Transports.UTP
         /// <param name="networkDelivery">The delivery type (QoS) to send data with</param>
         public override void Send(ulong clientId, ArraySegment<byte> payload, NetworkDelivery networkDelivery)
         {
-            if (payload.Count > m_MaxPayloadSize)
+            var pipeline = SelectSendPipeline(networkDelivery);
+
+            if (pipeline != m_ReliableSequencedPipeline && payload.Count > m_MaxPayloadSize)
             {
-                Debug.LogError($"Payload of size {payload.Count} larger than configured 'Max Payload Size' ({m_MaxPayloadSize}).");
+                Debug.LogError($"Unreliable payload of size {payload.Count} larger than configured 'Max Payload Size' ({m_MaxPayloadSize}).");
                 return;
             }
-
-            var pipeline = SelectSendPipeline(networkDelivery);
 
             var sendTarget = new SendTarget(clientId, pipeline);
             if (!m_SendQueue.TryGetValue(sendTarget, out var queue))
@@ -1285,10 +1285,10 @@ namespace Unity.Netcode.Transports.UTP
                 SendBatchedMessages(kvp.Key, kvp.Value);
             }
 
-            // The above flush only puts the message in UTP internal buffers, need the flush send
-            // job to execute to actually get things out on the wire. This will also ensure any
-            // disconnect messages are sent out.
-            m_Driver.ScheduleFlushSend(default).Complete();
+            // The above flush only puts the message in UTP internal buffers, need an update to
+            // actually get the messages on the wire. (Normally a flush send would be sufficient,
+            // but there might be disconnect messages and those require an update call.)
+            m_Driver.ScheduleUpdate().Complete();
 
             DisposeInternals();
 
@@ -1325,10 +1325,8 @@ namespace Unity.Netcode.Transports.UTP
 #if MULTIPLAYER_TOOLS_1_0_0_PRE_7
             NetworkPipelineStageCollection.RegisterPipelineStage(new NetworkMetricsPipelineStage());
 #endif
-            var maxFrameTimeMS = 0;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            maxFrameTimeMS = 100;
             ConfigureSimulator();
 #endif
 
@@ -1336,8 +1334,7 @@ namespace Unity.Netcode.Transports.UTP
                 maxConnectAttempts: transport.m_MaxConnectAttempts,
                 connectTimeoutMS: transport.m_ConnectTimeoutMS,
                 disconnectTimeoutMS: transport.m_DisconnectTimeoutMS,
-                heartbeatTimeoutMS: transport.m_HeartbeatTimeoutMS,
-                maxFrameTimeMS: maxFrameTimeMS);
+                heartbeatTimeoutMS: transport.m_HeartbeatTimeoutMS);
 
             driver = NetworkDriver.Create(m_NetworkSettings);
 

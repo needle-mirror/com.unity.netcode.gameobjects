@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+
+## [1.0.2] - 2022-09-12
+
+- Fixed issue where `NetworkTransform` was not honoring the InLocalSpace property on the authority side during OnNetworkSpawn. (#2170)
+- Fixed issue where `NetworkTransform` was not ending extrapolation for the previous state causing non-authoritative instances to become out of synch. (#2170)
+- Fixed issue where `NetworkTransform` was not continuing to interpolate for the remainder of the associated tick period. (#2170)
+- Fixed issue during `NetworkTransform.OnNetworkSpawn` for non-authoritative instances where it was initializing interpolators with the replicated network state which now only contains the transform deltas that occurred during a network tick and not the entire transform state. (#2170)
+
 ## [1.0.1] - 2022-08-23
 
 ### Changed
@@ -14,7 +22,7 @@ Additional documentation and release notes are available at [Multiplayer Documen
 - Changed version to 1.0.1. (#2131)
 - Updated dependency on `com.unity.transport` to 1.2.0. (#2129)
 - When using `UnityTransport`, _reliable_ payloads are now allowed to exceed the configured 'Max Payload Size'. Unreliable payloads remain bounded by this setting. (#2081)
-- Preformance improvements for cases with large number of NetworkObjects, by not iterating over all unchanged NetworkObjects 
+- Performance improvements for cases with large number of NetworkObjects, by not iterating over all unchanged NetworkObjects 
 
 ### Fixed
 

@@ -1,8 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
-using Unity.Collections;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Unity.Netcode.TestHelpers.Runtime;
@@ -113,82 +113,6 @@ namespace Unity.Netcode.RuntimeTests
         }
     }
 
-    internal class SpawnCatcher : INetworkHooks
-    {
-        public struct TriggerData
-        {
-            public FastBufferReader Reader;
-            public MessageHeader Header;
-            public ulong SenderId;
-            public float Timestamp;
-            public int SerializedHeaderSize;
-        }
-        public readonly List<TriggerData> CaughtMessages = new List<TriggerData>();
-
-        public void OnBeforeSendMessage<T>(ulong clientId, ref T message, NetworkDelivery delivery) where T : INetworkMessage
-        {
-        }
-
-        public void OnAfterSendMessage<T>(ulong clientId, ref T message, NetworkDelivery delivery, int messageSizeBytes) where T : INetworkMessage
-        {
-        }
-
-        public void OnBeforeReceiveMessage(ulong senderId, Type messageType, int messageSizeBytes)
-        {
-        }
-
-        public void OnAfterReceiveMessage(ulong senderId, Type messageType, int messageSizeBytes)
-        {
-        }
-
-        public void OnBeforeSendBatch(ulong clientId, int messageCount, int batchSizeInBytes, NetworkDelivery delivery)
-        {
-        }
-
-        public void OnAfterSendBatch(ulong clientId, int messageCount, int batchSizeInBytes, NetworkDelivery delivery)
-        {
-        }
-
-        public void OnBeforeReceiveBatch(ulong senderId, int messageCount, int batchSizeInBytes)
-        {
-        }
-
-        public void OnAfterReceiveBatch(ulong senderId, int messageCount, int batchSizeInBytes)
-        {
-        }
-
-        public bool OnVerifyCanSend(ulong destinationId, Type messageType, NetworkDelivery delivery)
-        {
-            return true;
-        }
-
-        public bool OnVerifyCanReceive(ulong senderId, Type messageType, FastBufferReader messageContent, ref NetworkContext context)
-        {
-            if (messageType == typeof(CreateObjectMessage))
-            {
-                CaughtMessages.Add(new TriggerData
-                {
-                    Reader = new FastBufferReader(messageContent, Allocator.Persistent),
-                    Header = context.Header,
-                    Timestamp = context.Timestamp,
-                    SenderId = context.SenderId,
-                    SerializedHeaderSize = context.SerializedHeaderSize
-                });
-                return false;
-            }
-
-            return true;
-        }
-
-        public void OnBeforeHandleMessage<T>(ref T message, ref NetworkContext context) where T : INetworkMessage
-        {
-        }
-
-        public void OnAfterHandleMessage<T>(ref T message, ref NetworkContext context) where T : INetworkMessage
-        {
-        }
-    }
-
     public class DeferredMessageTestRpcComponent : NetworkBehaviour
     {
         public bool ClientRpcCalled;
@@ -198,61 +122,86 @@ namespace Unity.Netcode.RuntimeTests
         {
             ClientRpcCalled = true;
         }
+
+        public static readonly List<ulong> ClientInstances = new List<ulong>();
+        public override void OnNetworkSpawn()
+        {
+            if (!IsServer)
+            {
+                ClientInstances.Add(NetworkManager.LocalClientId);
+            }
+            base.OnNetworkSpawn();
+        }
     }
 
     public class DeferredMessageTestNetworkVariableComponent : NetworkBehaviour
     {
-        public NetworkVariable<int> TestNetworkVariable = new NetworkVariable<int>();
+        public static readonly List<ulong> ClientInstances = new List<ulong>();
+
+        public NetworkVariable<int> TestNetworkVariable;
+
+        public void Awake()
+        {
+            TestNetworkVariable = new NetworkVariable<int>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+        }
+
+        public override void OnNetworkSpawn()
+        {
+            if (!IsServer)
+            {
+                ClientInstances.Add(NetworkManager.LocalClientId);
+            }
+            base.OnNetworkSpawn();
+        }
     }
 
     public class DeferredMessageTestRpcAndNetworkVariableComponent : NetworkBehaviour
     {
+        public static readonly List<ulong> ClientInstances = new List<ulong>();
         public bool ClientRpcCalled;
+        public NetworkVariable<int> TestNetworkVariable;
+
+        public void Awake()
+        {
+            TestNetworkVariable = new NetworkVariable<int>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+        }
+
+        public override void OnNetworkSpawn()
+        {
+            if (!IsServer)
+            {
+                ClientInstances.Add(NetworkManager.LocalClientId);
+            }
+            base.OnNetworkSpawn();
+        }
 
         [ClientRpc]
         public void SendTestClientRpc()
         {
             ClientRpcCalled = true;
         }
-
-        public NetworkVariable<int> TestNetworkVariable = new NetworkVariable<int>();
     }
 
     public class DeferredMessagingTest : NetcodeIntegrationTest
     {
-        protected override int NumberOfClients => 2;
+        protected override int NumberOfClients => 0;
 
-        private List<SpawnCatcher> m_ClientSpawnCatchers = new List<SpawnCatcher>();
+        private List<MessageCatcher<CreateObjectMessage>> m_ClientSpawnCatchers = new List<MessageCatcher<CreateObjectMessage>>();
 
         private GameObject m_RpcPrefab;
         private GameObject m_NetworkVariablePrefab;
         private GameObject m_RpcAndNetworkVariablePrefab;
 
+        private int m_NumberOfClientsToLateJoin = 2;
+
         protected override IEnumerator OnSetup()
         {
+            DeferredMessageTestRpcAndNetworkVariableComponent.ClientInstances.Clear();
+            DeferredMessageTestRpcComponent.ClientInstances.Clear();
+            DeferredMessageTestNetworkVariableComponent.ClientInstances.Clear();
+            m_SkipAddingPrefabsToClient = false;
             // Host is irrelevant, messages don't get sent to the host "client"
             m_UseHost = false;
-
-            m_RpcPrefab = new GameObject("Object With RPC");
-            var networkObject = m_RpcPrefab.AddComponent<NetworkObject>();
-            m_RpcPrefab.AddComponent<DeferredMessageTestRpcComponent>();
-
-            // Make it a prefab
-            NetcodeIntegrationTestHelpers.MakeNetworkObjectTestPrefab(networkObject);
-
-            m_NetworkVariablePrefab = new GameObject("Object With NetworkVariable");
-            networkObject = m_NetworkVariablePrefab.AddComponent<NetworkObject>();
-            m_NetworkVariablePrefab.AddComponent<DeferredMessageTestNetworkVariableComponent>();
-
-            // Make it a prefab
-            NetcodeIntegrationTestHelpers.MakeNetworkObjectTestPrefab(networkObject);
-
-            m_RpcAndNetworkVariablePrefab = new GameObject("Object With NetworkVariable And RPC");
-            networkObject = m_RpcAndNetworkVariablePrefab.AddComponent<NetworkObject>();
-            m_RpcAndNetworkVariablePrefab.AddComponent<DeferredMessageTestRpcAndNetworkVariableComponent>();
-
-            // Make it a prefab
-            NetcodeIntegrationTestHelpers.MakeNetworkObjectTestPrefab(networkObject);
 
             // Replace the IDeferredMessageManager component with our test one in the component factory
             ComponentFactory.Register<IDeferredMessageManager>(networkManager => new TestDeferredMessageManager(networkManager));
@@ -269,13 +218,54 @@ namespace Unity.Netcode.RuntimeTests
 
         protected override void OnServerAndClientsCreated()
         {
-            m_ServerNetworkManager.AddNetworkPrefab(m_RpcPrefab);
-            m_ServerNetworkManager.AddNetworkPrefab(m_NetworkVariablePrefab);
-            m_ServerNetworkManager.AddNetworkPrefab(m_RpcAndNetworkVariablePrefab);
+            // Note: This is where prefabs should be created
+            m_RpcPrefab = CreateNetworkObjectPrefab("Object With RPC");
+            var networkObject = m_RpcPrefab.GetComponent<NetworkObject>();
+            m_RpcPrefab.AddComponent<DeferredMessageTestRpcComponent>();
+
+            m_NetworkVariablePrefab = CreateNetworkObjectPrefab("Object With NetworkVariable");
+            networkObject = m_NetworkVariablePrefab.GetComponent<NetworkObject>();
+            m_NetworkVariablePrefab.AddComponent<DeferredMessageTestNetworkVariableComponent>();
+
+            m_RpcAndNetworkVariablePrefab = CreateNetworkObjectPrefab("Object With NetworkVariable And RPC");
+            networkObject = m_RpcAndNetworkVariablePrefab.GetComponent<NetworkObject>();
+            m_RpcAndNetworkVariablePrefab.AddComponent<DeferredMessageTestRpcAndNetworkVariableComponent>();
+
             m_ServerNetworkManager.NetworkConfig.ForceSamePrefabs = false;
-            foreach (var client in m_ClientNetworkManagers)
+
+        }
+
+        private bool m_SkipAddingPrefabsToClient = false;
+
+        private void AddPrefabsToClient(NetworkManager networkManager)
+        {
+            networkManager.AddNetworkPrefab(m_RpcPrefab);
+            networkManager.AddNetworkPrefab(m_NetworkVariablePrefab);
+            networkManager.AddNetworkPrefab(m_RpcAndNetworkVariablePrefab);
+        }
+
+        protected override void OnNewClientCreated(NetworkManager networkManager)
+        {
+            networkManager.NetworkConfig.ForceSamePrefabs = false;
+            if (!m_SkipAddingPrefabsToClient)
             {
-                client.NetworkConfig.ForceSamePrefabs = false;
+                AddPrefabsToClient(networkManager);
+            }
+
+            base.OnNewClientCreated(networkManager);
+        }
+
+        private IEnumerator SpawnClients(bool clearTestDeferredMessageManagerCallFlags = true)
+        {
+            for (int i = 0; i < m_NumberOfClientsToLateJoin; i++)
+            {
+                // Create and join client
+                yield return CreateAndStartNewClient();
+            }
+
+            if (clearTestDeferredMessageManagerCallFlags)
+            {
+                ClearTestDeferredMessageManagerCallFlags();
             }
         }
 
@@ -296,24 +286,9 @@ namespace Unity.Netcode.RuntimeTests
         {
             foreach (var client in m_ClientNetworkManagers)
             {
-                var catcher = new SpawnCatcher();
+                var catcher = new MessageCatcher<CreateObjectMessage>(client);
                 m_ClientSpawnCatchers.Add(catcher);
                 client.MessagingSystem.Hook(catcher);
-            }
-        }
-
-        private void RegisterClientPrefabs(bool clearTestDeferredMessageManagerCallFlags = true)
-        {
-            foreach (var client in m_ClientNetworkManagers)
-            {
-                client.AddNetworkPrefab(m_RpcPrefab);
-                client.AddNetworkPrefab(m_NetworkVariablePrefab);
-                client.AddNetworkPrefab(m_RpcAndNetworkVariablePrefab);
-            }
-
-            if (clearTestDeferredMessageManagerCallFlags)
-            {
-                ClearTestDeferredMessageManagerCallFlags();
             }
         }
 
@@ -323,11 +298,7 @@ namespace Unity.Netcode.RuntimeTests
             {
                 // Unhook first so the spawn catcher stops catching spawns
                 m_ClientNetworkManagers[i].MessagingSystem.Unhook(m_ClientSpawnCatchers[i]);
-                foreach (var caughtSpawn in m_ClientSpawnCatchers[i].CaughtMessages)
-                {
-                    // Reader will be disposed within HandleMessage
-                    m_ClientNetworkManagers[i].MessagingSystem.HandleMessage(caughtSpawn.Header, caughtSpawn.Reader, caughtSpawn.SenderId, caughtSpawn.Timestamp, caughtSpawn.SerializedHeaderSize);
-                }
+                m_ClientSpawnCatchers[i].ReleaseMessages();
             }
             m_ClientSpawnCatchers.Clear();
         }
@@ -345,7 +316,7 @@ namespace Unity.Netcode.RuntimeTests
             {
                 foreach (var catcher in m_ClientSpawnCatchers)
                 {
-                    if (catcher.CaughtMessages.Count != count)
+                    if (catcher.CaughtMessageCount != count)
                     {
                         return false;
                     }
@@ -372,89 +343,54 @@ namespace Unity.Netcode.RuntimeTests
             Assert.AreEqual(0, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnAddPrefab));
         }
 
-        private static CoroutineRunner s_CoroutineRunner;
-
-        private Coroutine Run(IEnumerator enumerator)
+        private IEnumerator WaitForAllClientsToReceive<T>() where T : INetworkMessage
         {
-            if (s_CoroutineRunner == null)
-            {
-                s_CoroutineRunner = new GameObject(nameof(CoroutineRunner)).AddComponent<CoroutineRunner>();
-            }
-
-            return s_CoroutineRunner.StartCoroutine(enumerator);
+            yield return WaitForMessageReceived<T>(m_ClientNetworkManagers.ToList(), ReceiptType.Received);
         }
 
-        private IEnumerator RunMultiple(List<IEnumerator> waitFor)
-        {
-            yield return WaitMultiple(StartMultiple(waitFor));
-        }
-
-        private List<Coroutine> StartMultiple(List<IEnumerator> waitFor)
-        {
-            var runningCoroutines = new List<Coroutine>();
-            foreach (var enumerator in waitFor)
-            {
-                runningCoroutines.Add(Run(enumerator));
-            }
-
-            return runningCoroutines;
-        }
-
-        private IEnumerator WaitMultiple(List<Coroutine> runningCoroutines)
-        {
-            foreach (var coroutine in runningCoroutines)
-            {
-                yield return coroutine;
-            }
-        }
-
-        private List<IEnumerator> WaitForAllClientsToReceive<T>() where T : INetworkMessage
-        {
-            var waiters = new List<IEnumerator>();
-            foreach (var client in m_ClientNetworkManagers)
-            {
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<T>(client));
-            }
-
-            return waiters;
-        }
-
-        private List<IEnumerator> WaitForAllClientsToReceive<TFirstMessage, TSecondMessage>()
+        private IEnumerator WaitForAllClientsToReceive<TFirstMessage, TSecondMessage>()
             where TFirstMessage : INetworkMessage
             where TSecondMessage : INetworkMessage
         {
-            var waiters = new List<IEnumerator>();
-            foreach (var client in m_ClientNetworkManagers)
+            yield return WaitForMessagesReceived(new List<Type>
             {
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<TFirstMessage>(client));
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<TSecondMessage>(client));
-            }
-
-            return waiters;
+                typeof(TFirstMessage),
+                typeof(TSecondMessage)
+            }, m_ClientNetworkManagers.ToList(), ReceiptType.Received);
         }
 
-        private List<IEnumerator> WaitForAllClientsToReceive<TFirstMessage, TSecondMessage, TThirdMessage, TFourthMessage>()
+        private IEnumerator WaitForAllClientsToReceive<TFirstMessage, TSecondMessage, TThirdMessage>()
+        where TFirstMessage : INetworkMessage
+        where TSecondMessage : INetworkMessage
+        where TThirdMessage : INetworkMessage
+        {
+            yield return WaitForMessagesReceived(new List<Type>
+            {
+                typeof(TFirstMessage),
+                typeof(TSecondMessage),
+                typeof(TThirdMessage),
+            }, m_ClientNetworkManagers.ToList(), ReceiptType.Received);
+        }
+
+        private IEnumerator WaitForAllClientsToReceive<TFirstMessage, TSecondMessage, TThirdMessage, TFourthMessage>()
             where TFirstMessage : INetworkMessage
             where TSecondMessage : INetworkMessage
             where TThirdMessage : INetworkMessage
             where TFourthMessage : INetworkMessage
         {
-            var waiters = new List<IEnumerator>();
-            foreach (var client in m_ClientNetworkManagers)
+            yield return WaitForMessagesReceived(new List<Type>
             {
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<TFirstMessage>(client));
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<TSecondMessage>(client));
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<TThirdMessage>(client));
-                waiters.Add(NetcodeIntegrationTestHelpers.WaitForMessageOfTypeReceived<TFourthMessage>(client));
-            }
-
-            return waiters;
+                typeof(TFirstMessage),
+                typeof(TSecondMessage),
+                typeof(TThirdMessage),
+                typeof(TFourthMessage),
+            }, m_ClientNetworkManagers.ToList(), ReceiptType.Received);
         }
 
         [UnityTest]
         public IEnumerator WhenAnRpcArrivesBeforeASpawnArrives_ItIsDeferred()
         {
-            RegisterClientPrefabs();
+            yield return SpawnClients();
             CatchSpawns();
             var serverObject = Object.Instantiate(m_RpcPrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
@@ -463,7 +399,7 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<DeferredMessageTestRpcComponent>().SendTestClientRpc();
 
-            yield return RunMultiple(WaitForAllClientsToReceive<ClientRpcMessage>());
+            yield return WaitForAllClientsToReceive<ClientRpcMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -477,7 +413,7 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenADespawnArrivesBeforeASpawnArrives_ItIsDeferred()
         {
-            RegisterClientPrefabs();
+            yield return SpawnClients();
             CatchSpawns();
             var serverObject = Object.Instantiate(m_RpcPrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
@@ -486,7 +422,7 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<NetworkObject>().Despawn(false);
 
-            yield return RunMultiple(WaitForAllClientsToReceive<DestroyObjectMessage>());
+            yield return WaitForAllClientsToReceive<DestroyObjectMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -500,7 +436,7 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenAChangeOwnershipMessageArrivesBeforeASpawnArrives_ItIsDeferred()
         {
-            RegisterClientPrefabs();
+            yield return SpawnClients();
             CatchSpawns();
             var serverObject = Object.Instantiate(m_RpcPrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
@@ -508,7 +444,7 @@ namespace Unity.Netcode.RuntimeTests
             yield return WaitForClientsToCatchSpawns();
 
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
-            yield return RunMultiple(WaitForAllClientsToReceive<ChangeOwnershipMessage>());
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
@@ -521,13 +457,10 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenANetworkVariableDeltaMessageArrivesBeforeASpawnArrives_ItIsDeferred()
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
 
-            // Have to start these before spawning here because spawning sends a NetworkVariableDeltaMessage, too
-            // Depending on timing, if we start this after spawning, we may end up missing the first one.
-            var waiters = WaitForAllClientsToReceive<NetworkVariableDeltaMessage, NetworkVariableDeltaMessage>();
-            var coroutines = StartMultiple(waiters);
 
             var serverObject = Object.Instantiate(m_NetworkVariablePrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
@@ -536,7 +469,7 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<DeferredMessageTestNetworkVariableComponent>().TestNetworkVariable.Value = 1;
 
-            yield return WaitMultiple(coroutines);
+            yield return WaitForAllClientsToReceive<NetworkVariableDeltaMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -545,18 +478,21 @@ namespace Unity.Netcode.RuntimeTests
                 Assert.IsFalse(manager.ProcessTriggersCalled);
                 // TODO: Network Variables generate an extra message immediately at spawn for some reason...
                 // Seems like a bug since the network variable data is in the spawn message already.
-                AssertSpawnTriggerCountForObject(manager, serverObject, 2);
+                AssertSpawnTriggerCountForObject(manager, serverObject, 1);
             }
         }
 
         [UnityTest]
+        //[Ignore("Disabling this temporarily until it is migrated into new integration test.")]
         public IEnumerator WhenASpawnMessageArrivesBeforeThePrefabIsAvailable_ItIsDeferred()
         {
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             var serverObject = Object.Instantiate(m_RpcPrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
             serverObject.GetComponent<NetworkObject>().Spawn();
 
-            yield return RunMultiple(WaitForAllClientsToReceive<CreateObjectMessage>());
+            yield return WaitForAllClientsToReceive<CreateObjectMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -631,7 +567,27 @@ namespace Unity.Netcode.RuntimeTests
         public IEnumerator WhenANetworkVariableDeltaMessageIsDeferred_ItIsProcessedOnSpawn()
         {
             yield return WhenANetworkVariableDeltaMessageArrivesBeforeASpawnArrives_ItIsDeferred();
+
+            foreach (var client in m_ClientNetworkManagers)
+            {
+                AddPrefabsToClient(client);
+            }
+
             ReleaseSpawns();
+
+            // Wait for the clients to spawn the NetworkObjects
+            bool HaveAllClientsSpawned()
+            {
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    if (!DeferredMessageTestNetworkVariableComponent.ClientInstances.Contains(client.LocalClientId))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            yield return WaitForConditionOrTimeOut(HaveAllClientsSpawned);
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -647,9 +603,31 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenASpawnMessageIsDeferred_ItIsProcessedOnAddPrefab()
         {
+            // This will prevent spawned clients from adding prefabs
+            m_SkipAddingPrefabsToClient = true;
             yield return WhenASpawnMessageArrivesBeforeThePrefabIsAvailable_ItIsDeferred();
-            RegisterClientPrefabs(false);
 
+            // Now add the prefabs
+            foreach (var client in m_ClientNetworkManagers)
+            {
+                AddPrefabsToClient(client);
+            }
+
+            // Wait for the clients to spawn the NetworkObjects
+            bool HaveAllClientsSpawned()
+            {
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    if (!DeferredMessageTestRpcComponent.ClientInstances.Contains(client.LocalClientId))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            yield return WaitForConditionOrTimeOut(HaveAllClientsSpawned);
+
+            // Validate this test
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
@@ -664,13 +642,9 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenMultipleSpawnTriggeredMessagesAreDeferred_TheyAreAllProcessedOnSpawn()
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
-
-            // Have to start these before spawning here because spawning sends a NetworkVariableDeltaMessage, too
-            // Depending on timing, if we start this after spawning, we may end up missing the first one.
-            var waiters = WaitForAllClientsToReceive<ClientRpcMessage, NetworkVariableDeltaMessage, NetworkVariableDeltaMessage, ChangeOwnershipMessage>();
-            var coroutines = StartMultiple(waiters);
 
             var serverObject = Object.Instantiate(m_RpcAndNetworkVariablePrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
@@ -679,10 +653,12 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<DeferredMessageTestRpcAndNetworkVariableComponent>().SendTestClientRpc();
             serverObject.GetComponent<DeferredMessageTestRpcAndNetworkVariableComponent>().TestNetworkVariable.Value = 1;
+
+            yield return WaitForAllClientsToReceive<ClientRpcMessage, NetworkVariableDeltaMessage>();
+
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
 
-            // Should be received in order so we'll wait for the last one.
-            yield return WaitMultiple(coroutines);
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -690,29 +666,49 @@ namespace Unity.Netcode.RuntimeTests
                 Assert.IsTrue(manager.DeferMessageCalled);
                 Assert.IsFalse(manager.ProcessTriggersCalled);
 
-                Assert.AreEqual(4, manager.DeferredMessageCountTotal());
-                Assert.AreEqual(4, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnSpawn));
-                Assert.AreEqual(4, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, serverObject.GetComponent<NetworkObject>().NetworkObjectId));
+                Assert.AreEqual(3, manager.DeferredMessageCountTotal());
+                Assert.AreEqual(3, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnSpawn));
+                Assert.AreEqual(3, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, serverObject.GetComponent<NetworkObject>().NetworkObjectId));
                 Assert.AreEqual(0, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnAddPrefab));
+                AddPrefabsToClient(client);
             }
+
             ReleaseSpawns();
 
+            // Wait for the clients to spawn the NetworkObjects
+            bool HaveAllClientsSpawned()
+            {
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    if (!DeferredMessageTestRpcAndNetworkVariableComponent.ClientInstances.Contains(client.LocalClientId))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            yield return WaitForConditionOrTimeOut(HaveAllClientsSpawned);
+            yield return new WaitForSeconds(0.1f);
+
+            // Validate the spawned objects
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
-                Assert.IsTrue(manager.ProcessTriggersCalled);
-                Assert.AreEqual(0, manager.DeferredMessageCountTotal());
+                Assert.IsTrue(manager.ProcessTriggersCalled, "Process triggers were not called!");
+                Assert.AreEqual(0, manager.DeferredMessageCountTotal(), $"Deferred message count ({manager.DeferredMessageCountTotal()}) is not zero!");
 
                 var component = GetComponentForClient<DeferredMessageTestRpcAndNetworkVariableComponent>(client.LocalClientId);
-                Assert.IsTrue(component.ClientRpcCalled);
-                Assert.AreEqual(1, component.TestNetworkVariable.Value);
-                Assert.AreEqual(m_ClientNetworkManagers[0].LocalClientId, component.OwnerClientId);
+                Assert.IsTrue(component.ClientRpcCalled, "Client RPC was not called!");
+                Assert.AreEqual(1, component.TestNetworkVariable.Value, $"Test {nameof(NetworkVariable<int>)} ({component.TestNetworkVariable.Value}) does not equal 1!");
+                Assert.AreEqual(m_ClientNetworkManagers[0].LocalClientId, component.OwnerClientId, $"{component.name} owner id ({component.OwnerClientId}) does not equal first client id ({m_ClientNetworkManagers[0].LocalClientId})");
             }
         }
 
         [UnityTest]
         public IEnumerator WhenMultipleAddPrefabTriggeredMessagesAreDeferred_TheyAreAllProcessedOnAddNetworkPrefab()
         {
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             var serverObject = Object.Instantiate(m_RpcPrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
             serverObject.GetComponent<NetworkObject>().Spawn();
@@ -721,7 +717,7 @@ namespace Unity.Netcode.RuntimeTests
             serverObject2.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
             serverObject2.GetComponent<NetworkObject>().Spawn();
 
-            yield return RunMultiple(WaitForAllClientsToReceive<CreateObjectMessage, CreateObjectMessage>());
+            yield return WaitForAllClientsToReceive<CreateObjectMessage, CreateObjectMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -733,9 +729,23 @@ namespace Unity.Netcode.RuntimeTests
                 Assert.AreEqual(0, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnSpawn));
                 Assert.AreEqual(2, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnAddPrefab));
                 Assert.AreEqual(2, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnAddPrefab, serverObject.GetComponent<NetworkObject>().GlobalObjectIdHash));
+                AddPrefabsToClient(client);
             }
 
-            RegisterClientPrefabs(false);
+            // Wait for the clients to spawn the NetworkObjects
+            bool HaveAllClientsSpawned()
+            {
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    if (!DeferredMessageTestRpcComponent.ClientInstances.Contains(client.LocalClientId))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            yield return WaitForConditionOrTimeOut(HaveAllClientsSpawned);
+
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -769,10 +779,8 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenSpawnTriggeredMessagesAreDeferredBeforeThePrefabIsAdded_AddingThePrefabCausesThemToBeProcessed()
         {
-            // Because we're not waiting for the client to receive the spawn before we change the network variable value,
-            // there's only one NetworkVariableDeltaMessage this time.
-            var waiters = WaitForAllClientsToReceive<CreateObjectMessage, ClientRpcMessage, NetworkVariableDeltaMessage, ChangeOwnershipMessage>();
-            var coroutines = StartMultiple(waiters);
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
 
             var serverObject = Object.Instantiate(m_RpcAndNetworkVariablePrefab);
             serverObject.GetComponent<NetworkObject>().NetworkManagerOwner = m_ServerNetworkManager;
@@ -780,10 +788,15 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<DeferredMessageTestRpcAndNetworkVariableComponent>().SendTestClientRpc();
             serverObject.GetComponent<DeferredMessageTestRpcAndNetworkVariableComponent>().TestNetworkVariable.Value = 1;
+            // TODO: Remove this if we figure out how to work around the NetworkVariableDeltaMessage.Serialized issue at line 59
+            // Otherwise, we have to wait for at least 1 tick for the NetworkVariableDeltaMessage to be generated before changing ownership
+            yield return WaitForAllClientsToReceive<CreateObjectMessage, ClientRpcMessage, NetworkVariableDeltaMessage>();
+
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
 
-            yield return WaitMultiple(coroutines);
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
 
+            // Validate messages are deferred and pending
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
@@ -794,10 +807,26 @@ namespace Unity.Netcode.RuntimeTests
                 Assert.AreEqual(3, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, serverObject.GetComponent<NetworkObject>().NetworkObjectId));
                 Assert.AreEqual(1, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnAddPrefab));
                 Assert.AreEqual(1, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnAddPrefab, serverObject.GetComponent<NetworkObject>().GlobalObjectIdHash));
+                AddPrefabsToClient(client);
             }
 
-            RegisterClientPrefabs(false);
+            // Wait for the clients to spawn the NetworkObjects
+            bool HaveAllClientsSpawned()
+            {
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    if (!DeferredMessageTestRpcAndNetworkVariableComponent.ClientInstances.Contains(client.LocalClientId))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            yield return WaitForConditionOrTimeOut(HaveAllClientsSpawned);
 
+            yield return new WaitForSeconds(0.1f);
+
+            // Validate the test
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
@@ -813,10 +842,10 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [UnityTest]
-        [Ignore("This test is unstable (MTT-4146)")]
         public IEnumerator WhenAMessageIsDeferredForMoreThanTheConfiguredTime_ItIsRemoved([Values(1, 2, 3)] int timeout)
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -870,24 +899,29 @@ namespace Unity.Netcode.RuntimeTests
 
             yield return new WaitForSeconds(timeout + 0.1f);
 
-            Assert.AreEqual(NumberOfClients, purgeCount);
-            foreach (var client in m_ClientNetworkManagers)
+            bool HaveAllClientsPurged()
             {
-                var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
-                Assert.AreEqual(0, manager.DeferredMessageCountTotal());
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
+                    if (manager.DeferredMessageCountTotal() != 0)
+                    {
+                        return false;
+                    }
+                }
+                return true;
             }
+
+            yield return WaitForConditionOrTimeOut(HaveAllClientsPurged);
+            AssertOnTimeout("Timed out waiting for all clients to purge their deferred messages!");
         }
 
         [UnityTest]
-        [Ignore("This test is unstable on standalones")]
         public IEnumerator WhenMultipleMessagesForTheSameObjectAreDeferredForMoreThanTheConfiguredTime_TheyAreAllRemoved([Values(1, 2, 3)] int timeout)
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
-            // Have to start these before spawning here because spawning sends a NetworkVariableDeltaMessage, too
-            // Depending on timing, if we start this after spawning, we may end up missing the first one.
-            var waiters = WaitForAllClientsToReceive<ClientRpcMessage, NetworkVariableDeltaMessage, NetworkVariableDeltaMessage, ChangeOwnershipMessage>();
-            var coroutines = StartMultiple(waiters);
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -917,7 +951,9 @@ namespace Unity.Netcode.RuntimeTests
             serverObject.GetComponent<DeferredMessageTestRpcAndNetworkVariableComponent>().TestNetworkVariable.Value = 1;
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
 
-            yield return WaitMultiple(coroutines);
+            yield return WaitForMessagesReceived(
+                new List<Type> {typeof(ClientRpcMessage), typeof(NetworkVariableDeltaMessage), typeof(ChangeOwnershipMessage),
+                }, m_ClientNetworkManagers.ToList(), ReceiptType.Received);
 
             foreach (var unused in m_ClientNetworkManagers)
             {
@@ -931,37 +967,39 @@ namespace Unity.Netcode.RuntimeTests
                 {
                     ++purgeCount;
                     var elapsed = Time.realtimeSinceStartup - start;
-                    Assert.GreaterOrEqual(elapsed, timeout - 0.05f);
-                    Assert.AreEqual(4, manager.DeferredMessageCountTotal());
-                    Assert.AreEqual(4, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnSpawn));
-                    Assert.AreEqual(4, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, key));
+                    Assert.GreaterOrEqual(elapsed, timeout - 0.25f);
+                    Assert.AreEqual(3, manager.DeferredMessageCountTotal());
+                    Assert.AreEqual(3, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnSpawn));
+                    Assert.AreEqual(3, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, key));
                     Assert.AreEqual(serverObject.GetComponent<NetworkObject>().NetworkObjectId, key);
                 };
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
                 manager.OnBeforePurge = beforePurge;
             }
 
-            yield return new WaitForSeconds(timeout + 0.1f);
-
-            Assert.AreEqual(NumberOfClients, purgeCount);
-            foreach (var client in m_ClientNetworkManagers)
+            bool HaveAllClientsPurged()
             {
-                var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
-                Assert.AreEqual(0, manager.DeferredMessageCountTotal());
+                foreach (var client in m_ClientNetworkManagers)
+                {
+                    var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
+                    if (manager.DeferredMessageCountTotal() != 0)
+                    {
+                        return false;
+                    }
+                }
+                return true;
             }
+
+            yield return WaitForConditionOrTimeOut(HaveAllClientsPurged);
+            AssertOnTimeout("Timed out waiting for all clients to purge their deferred messages!");
         }
 
         [UnityTest]
         public IEnumerator WhenMultipleMessagesForDifferentObjectsAreDeferredForMoreThanTheConfiguredTime_TheyAreAllRemoved([Values(1, 2, 3)] int timeout)
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
-
-            // Have to start these before spawning here because spawning sends a NetworkVariableDeltaMessage, too
-            // Depending on timing, if we start this after spawning, we may end up missing the first one.
-            var waiters = WaitForAllClientsToReceive<ClientRpcMessage, NetworkVariableDeltaMessage, NetworkVariableDeltaMessage, ChangeOwnershipMessage>();
-            waiters.AddRange(WaitForAllClientsToReceive<ClientRpcMessage, NetworkVariableDeltaMessage, NetworkVariableDeltaMessage, ChangeOwnershipMessage>());
-            var coroutines = StartMultiple(waiters);
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -1000,10 +1038,13 @@ namespace Unity.Netcode.RuntimeTests
             serverObject2.GetComponent<DeferredMessageTestRpcAndNetworkVariableComponent>().TestNetworkVariable.Value = 1;
             serverObject2.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
 
-            yield return WaitMultiple(coroutines);
+            yield return WaitForMessagesReceived(
+            new List<Type> {typeof(ClientRpcMessage), typeof(NetworkVariableDeltaMessage), typeof(ChangeOwnershipMessage),typeof(ClientRpcMessage), typeof(NetworkVariableDeltaMessage), typeof(ChangeOwnershipMessage),
+            }, m_ClientNetworkManagers.ToList(), ReceiptType.Received);
 
             foreach (var unused in m_ClientNetworkManagers)
             {
+
                 LogAssert.Expect(LogType.Warning, $"[Netcode] Deferred messages were received for a trigger of type {IDeferredMessageManager.TriggerType.OnSpawn} with key {serverObject.GetComponent<NetworkObject>().NetworkObjectId}, but that trigger was not received within within {timeout} second(s).");
                 LogAssert.Expect(LogType.Warning, $"[Netcode] Deferred messages were received for a trigger of type {IDeferredMessageManager.TriggerType.OnSpawn} with key {serverObject2.GetComponent<NetworkObject>().NetworkObjectId}, but that trigger was not received within within {timeout} second(s).");
             }
@@ -1011,24 +1052,27 @@ namespace Unity.Netcode.RuntimeTests
             int purgeCount = 0;
             foreach (var client in m_ClientNetworkManagers)
             {
-                var remainingMessagesTotalThisClient = 8;
+                var remainingMessagesTotalThisClient = 6;
                 TestDeferredMessageManager.BeforePurgeDelegate beforePurge = (manager, key) =>
                 {
                     ++purgeCount;
                     var elapsed = Time.realtimeSinceStartup - start;
-                    Assert.GreaterOrEqual(elapsed, timeout - 0.05f);
+                    Assert.GreaterOrEqual(elapsed, timeout - 0.25f);
                     Assert.AreEqual(remainingMessagesTotalThisClient, manager.DeferredMessageCountTotal());
                     Assert.AreEqual(remainingMessagesTotalThisClient, manager.DeferredMessageCountForType(IDeferredMessageManager.TriggerType.OnSpawn));
-                    Assert.AreEqual(4, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, key));
-                    remainingMessagesTotalThisClient -= 4;
+                    Assert.AreEqual(3, manager.DeferredMessageCountForKey(IDeferredMessageManager.TriggerType.OnSpawn, key));
+                    remainingMessagesTotalThisClient -= 3;
                 };
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
                 manager.OnBeforePurge = beforePurge;
             }
 
             yield return new WaitForSeconds(timeout + 0.1f);
-
-            Assert.AreEqual(NumberOfClients * 2, purgeCount);
+            foreach (var client in m_ClientNetworkManagers)
+            {
+                AddPrefabsToClient(client);
+            }
+            Assert.AreEqual(m_NumberOfClientsToLateJoin * 2, purgeCount);
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
@@ -1039,7 +1083,8 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenADeferredMessageIsRemoved_OtherMessagesForSameObjectAreRemoved([Values(1, 2, 3)] int timeout)
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -1067,7 +1112,7 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
 
-            yield return RunMultiple(WaitForAllClientsToReceive<ChangeOwnershipMessage>());
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
 
             yield return new WaitForSeconds(timeout - 0.5f);
 
@@ -1080,7 +1125,7 @@ namespace Unity.Netcode.RuntimeTests
             }
 
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ServerNetworkManager.LocalClientId);
-            yield return RunMultiple(WaitForAllClientsToReceive<ChangeOwnershipMessage>());
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -1112,9 +1157,14 @@ namespace Unity.Netcode.RuntimeTests
                 manager.OnBeforePurge = beforePurge;
             }
 
+            foreach (var client in m_ClientNetworkManagers)
+            {
+                AddPrefabsToClient(client);
+            }
+
             yield return new WaitForSeconds(0.6f);
 
-            Assert.AreEqual(NumberOfClients, purgeCount);
+            Assert.AreEqual(m_NumberOfClientsToLateJoin, purgeCount);
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;
@@ -1125,7 +1175,8 @@ namespace Unity.Netcode.RuntimeTests
         [UnityTest]
         public IEnumerator WhenADeferredMessageIsRemoved_OtherMessagesForDifferentObjectsAreNotRemoved([Values(1, 2, 3)] int timeout)
         {
-            RegisterClientPrefabs();
+            m_SkipAddingPrefabsToClient = true;
+            yield return SpawnClients();
             CatchSpawns();
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -1156,7 +1207,7 @@ namespace Unity.Netcode.RuntimeTests
 
             serverObject.GetComponent<NetworkObject>().ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
 
-            yield return RunMultiple(WaitForAllClientsToReceive<ChangeOwnershipMessage>());
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
 
             yield return new WaitForSeconds(timeout - 0.5f);
 
@@ -1170,7 +1221,7 @@ namespace Unity.Netcode.RuntimeTests
             }
 
             serverObject2.GetComponent<NetworkObject>().ChangeOwnership(m_ServerNetworkManager.LocalClientId);
-            yield return RunMultiple(WaitForAllClientsToReceive<ChangeOwnershipMessage>());
+            yield return WaitForAllClientsToReceive<ChangeOwnershipMessage>();
 
             foreach (var client in m_ClientNetworkManagers)
             {
@@ -1206,9 +1257,14 @@ namespace Unity.Netcode.RuntimeTests
                 manager.OnBeforePurge = beforePurge;
             }
 
+            foreach (var client in m_ClientNetworkManagers)
+            {
+                AddPrefabsToClient(client);
+            }
+
             yield return new WaitForSeconds(0.6f);
 
-            Assert.AreEqual(NumberOfClients, purgeCount);
+            Assert.AreEqual(m_NumberOfClientsToLateJoin, purgeCount);
             foreach (var client in m_ClientNetworkManagers)
             {
                 var manager = (TestDeferredMessageManager)client.DeferredMessageManager;

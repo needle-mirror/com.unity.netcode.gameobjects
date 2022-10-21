@@ -17,6 +17,7 @@ namespace Unity.Netcode.RuntimeTests
     {
         public static List<ShowHideObject> ClientTargetedNetworkObjects = new List<ShowHideObject>();
         public static ulong ClientIdToTarget;
+        public static bool Silent;
 
         public static NetworkObject GetNetworkObjectById(ulong networkObjectId)
         {
@@ -36,6 +37,17 @@ namespace Unity.Netcode.RuntimeTests
             {
                 ClientTargetedNetworkObjects.Add(this);
             }
+
+            if (IsServer)
+            {
+                MyListSetOnSpawn.Add(45);
+            }
+            else
+            {
+                Debug.Assert(MyListSetOnSpawn.Count == 1);
+                Debug.Assert(MyListSetOnSpawn[0] == 45);
+            }
+
             base.OnNetworkSpawn();
         }
 
@@ -49,16 +61,22 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         public NetworkVariable<int> MyNetworkVariable;
+        public NetworkList<int> MyListSetOnSpawn;
 
         private void Awake()
         {
             MyNetworkVariable = new NetworkVariable<int>();
             MyNetworkVariable.OnValueChanged += Changed;
+
+            MyListSetOnSpawn = new NetworkList<int>();
         }
 
         public void Changed(int before, int after)
         {
-            Debug.Log($"Value changed from {before} to {after}");
+            if (!Silent)
+            {
+                Debug.Log($"Value changed from {before} to {after}");
+            }
         }
     }
 
@@ -263,6 +281,62 @@ namespace Unity.Netcode.RuntimeTests
                 // verify they become visible
                 yield return CheckVisible(true);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator NetworkHideDespawnTest()
+        {
+            m_ClientId0 = m_ClientNetworkManagers[0].LocalClientId;
+            ShowHideObject.ClientTargetedNetworkObjects.Clear();
+            ShowHideObject.ClientIdToTarget = m_ClientId0;
+            ShowHideObject.Silent = true;
+
+            var spawnedObject1 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            var spawnedObject2 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            var spawnedObject3 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            m_NetSpawnedObject1 = spawnedObject1.GetComponent<NetworkObject>();
+            m_NetSpawnedObject2 = spawnedObject2.GetComponent<NetworkObject>();
+            m_NetSpawnedObject3 = spawnedObject3.GetComponent<NetworkObject>();
+
+            m_NetSpawnedObject1.GetComponent<ShowHideObject>().MyNetworkVariable.Value++;
+            m_NetSpawnedObject1.NetworkHide(m_ClientId0);
+            m_NetSpawnedObject1.Despawn();
+
+            yield return NetcodeIntegrationTestHelpers.WaitForTicks(m_ServerNetworkManager, 5);
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator NetworkHideChangeOwnership()
+        {
+            ShowHideObject.ClientTargetedNetworkObjects.Clear();
+            ShowHideObject.ClientIdToTarget = m_ClientNetworkManagers[1].LocalClientId;
+            ShowHideObject.Silent = true;
+
+            var spawnedObject1 = SpawnObject(m_PrefabToSpawn, m_ServerNetworkManager);
+            m_NetSpawnedObject1 = spawnedObject1.GetComponent<NetworkObject>();
+
+            m_NetSpawnedObject1.GetComponent<ShowHideObject>().MyNetworkVariable.Value++;
+            // Hide an object to a client
+            m_NetSpawnedObject1.NetworkHide(m_ClientNetworkManagers[1].LocalClientId);
+
+            yield return WaitForConditionOrTimeOut(() => ShowHideObject.ClientTargetedNetworkObjects.Count == 0);
+
+            // Change ownership while the object is hidden to some
+            m_NetSpawnedObject1.ChangeOwnership(m_ClientNetworkManagers[0].LocalClientId);
+
+            // The two-second wait is actually needed as there's a potential warning of unhandled message after 1 second
+            yield return new WaitForSeconds(1.25f);
+
+            LogAssert.NoUnexpectedReceived();
+
+            // Show the object again to check nothing unexpected happens
+            m_NetSpawnedObject1.NetworkShow(m_ClientNetworkManagers[1].LocalClientId);
+
+            yield return WaitForConditionOrTimeOut(() => ShowHideObject.ClientTargetedNetworkObjects.Count == 1);
+
+            Assert.True(ShowHideObject.ClientTargetedNetworkObjects[0].OwnerClientId == m_ClientNetworkManagers[0].LocalClientId);
         }
     }
 }

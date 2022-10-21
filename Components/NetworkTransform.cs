@@ -10,7 +10,7 @@ namespace Unity.Netcode.Components
     /// The replicated value will be automatically be interpolated (if active) and applied to the underlying GameObject's transform.
     /// </summary>
     [DisallowMultipleComponent]
-    [AddComponentMenu("Netcode/" + nameof(NetworkTransform))]
+    [AddComponentMenu("Netcode/Network Transform")]
     [DefaultExecutionOrder(100000)] // this is needed to catch the update time after the transform was updated by user scripts
     public class NetworkTransform : NetworkBehaviour
     {
@@ -282,14 +282,7 @@ namespace Unity.Netcode.Components
                 {
                     // Go ahead and mark the local state dirty or not dirty as well
                     /// <see cref="TryCommitTransformToServer"/>
-                    if (HasPositionChange || HasRotAngleChange || HasScaleChange)
-                    {
-                        IsDirty = true;
-                    }
-                    else
-                    {
-                        IsDirty = false;
-                    }
+                    IsDirty = HasPositionChange || HasRotAngleChange || HasScaleChange;
                 }
             }
         }
@@ -459,19 +452,6 @@ namespace Unity.Netcode.Components
         }
 
         /// <summary>
-        /// Calculated when spawned, this is used to offset a newly received non-authority side state by 1 tick duration
-        /// in order to end the extrapolation for that state's values.
-        /// </summary>
-        /// <remarks>
-        /// Example:
-        /// NetworkState-A is received, processed, and measurements added
-        /// NetworkState-A is duplicated (NetworkState-A-Post) and its sent time is offset by the tick frequency
-        /// One tick later, NetworkState-A-Post is applied to end that delta's extrapolation.
-        /// <see cref="OnNetworkStateChanged"/> to see how NetworkState-A-Post doesn't get excluded/missed
-        /// </remarks>
-        private double m_TickFrequency;
-
-        /// <summary>
         /// This will try to send/commit the current transform delta states (if any)
         /// </summary>
         /// <remarks>
@@ -495,14 +475,16 @@ namespace Unity.Netcode.Components
             }
             else // Non-Authority
             {
+                var position = InLocalSpace ? transformToCommit.localPosition : transformToCommit.position;
+                var rotation = InLocalSpace ? transformToCommit.localRotation : transformToCommit.rotation;
                 // We are an owner requesting to update our state
                 if (!m_CachedIsServer)
                 {
-                    SetStateServerRpc(transformToCommit.position, transformToCommit.rotation, transformToCommit.localScale, false);
+                    SetStateServerRpc(position, rotation, transformToCommit.localScale, false);
                 }
                 else // Server is always authoritative (including owner authoritative)
                 {
-                    SetStateClientRpc(transformToCommit.position, transformToCommit.rotation, transformToCommit.localScale, false);
+                    SetStateClientRpc(position, rotation, transformToCommit.localScale, false);
                 }
             }
         }
@@ -528,37 +510,24 @@ namespace Unity.Netcode.Components
             }
         }
 
+        /// <summary>
+        /// Initializes the interpolators with the current transform values
+        /// </summary>
         private void ResetInterpolatedStateToCurrentAuthoritativeState()
         {
             var serverTime = NetworkManager.ServerTime.Time;
-
-            // TODO: Look into a better way to communicate the entire state for late joining clients.
-            // Since the replicated network state will just be the most recent deltas and not the entire state.
-            //m_PositionXInterpolator.ResetTo(m_LocalAuthoritativeNetworkState.PositionX, serverTime);
-            //m_PositionYInterpolator.ResetTo(m_LocalAuthoritativeNetworkState.PositionY, serverTime);
-            //m_PositionZInterpolator.ResetTo(m_LocalAuthoritativeNetworkState.PositionZ, serverTime);
-
-            //m_RotationInterpolator.ResetTo(Quaternion.Euler(m_LocalAuthoritativeNetworkState.RotAngleX, m_LocalAuthoritativeNetworkState.RotAngleY, m_LocalAuthoritativeNetworkState.RotAngleZ), serverTime);
-
-            //m_ScaleXInterpolator.ResetTo(m_LocalAuthoritativeNetworkState.ScaleX, serverTime);
-            //m_ScaleYInterpolator.ResetTo(m_LocalAuthoritativeNetworkState.ScaleY, serverTime);
-            //m_ScaleZInterpolator.ResetTo(m_LocalAuthoritativeNetworkState.ScaleZ, serverTime);
-
-            // NOTE ABOUT THIS CHANGE:
-            // !!! This will exclude any scale changes because we currently do not spawn network objects with scale !!!
-            // Regarding Scale: It will be the same scale as the default scale for the object being spawned.
             var position = InLocalSpace ? transform.localPosition : transform.position;
             m_PositionXInterpolator.ResetTo(position.x, serverTime);
             m_PositionYInterpolator.ResetTo(position.y, serverTime);
             m_PositionZInterpolator.ResetTo(position.z, serverTime);
+
             var rotation = InLocalSpace ? transform.localRotation : transform.rotation;
             m_RotationInterpolator.ResetTo(rotation, serverTime);
 
-            // TODO: (Create Jira Ticket) Synchronize local scale during NetworkObject synchronization
-            // (We will probably want to byte pack TransformData to offset the 3 float addition)
-            m_ScaleXInterpolator.ResetTo(transform.localScale.x, serverTime);
-            m_ScaleYInterpolator.ResetTo(transform.localScale.y, serverTime);
-            m_ScaleZInterpolator.ResetTo(transform.localScale.z, serverTime);
+            var scale = transform.localScale;
+            m_ScaleXInterpolator.ResetTo(scale.x, serverTime);
+            m_ScaleYInterpolator.ResetTo(scale.y, serverTime);
+            m_ScaleZInterpolator.ResetTo(scale.z, serverTime);
         }
 
         /// <summary>
@@ -609,63 +578,63 @@ namespace Unity.Netcode.Components
                 isDirty = true;
             }
 
-            if (SyncPositionX && Mathf.Abs(networkState.PositionX - position.x) >= PositionThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncPositionX && (Mathf.Abs(networkState.PositionX - position.x) >= PositionThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.PositionX = position.x;
                 networkState.HasPositionX = true;
                 isPositionDirty = true;
             }
 
-            if (SyncPositionY && Mathf.Abs(networkState.PositionY - position.y) >= PositionThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncPositionY && (Mathf.Abs(networkState.PositionY - position.y) >= PositionThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.PositionY = position.y;
                 networkState.HasPositionY = true;
                 isPositionDirty = true;
             }
 
-            if (SyncPositionZ && Mathf.Abs(networkState.PositionZ - position.z) >= PositionThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncPositionZ && (Mathf.Abs(networkState.PositionZ - position.z) >= PositionThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.PositionZ = position.z;
                 networkState.HasPositionZ = true;
                 isPositionDirty = true;
             }
 
-            if (SyncRotAngleX && Mathf.Abs(Mathf.DeltaAngle(networkState.RotAngleX, rotAngles.x)) >= RotAngleThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncRotAngleX && (Mathf.Abs(Mathf.DeltaAngle(networkState.RotAngleX, rotAngles.x)) >= RotAngleThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.RotAngleX = rotAngles.x;
                 networkState.HasRotAngleX = true;
                 isRotationDirty = true;
             }
 
-            if (SyncRotAngleY && Mathf.Abs(Mathf.DeltaAngle(networkState.RotAngleY, rotAngles.y)) >= RotAngleThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncRotAngleY && (Mathf.Abs(Mathf.DeltaAngle(networkState.RotAngleY, rotAngles.y)) >= RotAngleThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.RotAngleY = rotAngles.y;
                 networkState.HasRotAngleY = true;
                 isRotationDirty = true;
             }
 
-            if (SyncRotAngleZ && Mathf.Abs(Mathf.DeltaAngle(networkState.RotAngleZ, rotAngles.z)) >= RotAngleThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncRotAngleZ && (Mathf.Abs(Mathf.DeltaAngle(networkState.RotAngleZ, rotAngles.z)) >= RotAngleThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.RotAngleZ = rotAngles.z;
                 networkState.HasRotAngleZ = true;
                 isRotationDirty = true;
             }
 
-            if (SyncScaleX && Mathf.Abs(networkState.ScaleX - scale.x) >= ScaleThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncScaleX && (Mathf.Abs(networkState.ScaleX - scale.x) >= ScaleThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.ScaleX = scale.x;
                 networkState.HasScaleX = true;
                 isScaleDirty = true;
             }
 
-            if (SyncScaleY && Mathf.Abs(networkState.ScaleY - scale.y) >= ScaleThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncScaleY && (Mathf.Abs(networkState.ScaleY - scale.y) >= ScaleThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.ScaleY = scale.y;
                 networkState.HasScaleY = true;
                 isScaleDirty = true;
             }
 
-            if (SyncScaleZ && Mathf.Abs(networkState.ScaleZ - scale.z) >= ScaleThreshold || networkState.IsTeleportingNextFrame)
+            if (SyncScaleZ && (Mathf.Abs(networkState.ScaleZ - scale.z) >= ScaleThreshold || networkState.IsTeleportingNextFrame))
             {
                 networkState.ScaleZ = scale.z;
                 networkState.HasScaleZ = true;
@@ -1014,7 +983,6 @@ namespace Unity.Netcode.Components
         {
             m_CachedIsServer = IsServer;
             m_CachedNetworkManager = NetworkManager;
-            m_TickFrequency = 1.0 / NetworkManager.NetworkConfig.TickRate;
 
             Initialize();
 
@@ -1150,8 +1118,7 @@ namespace Unity.Netcode.Components
             }
             else
             {
-                transform.position = pos;
-                transform.rotation = rot;
+                transform.SetPositionAndRotation(pos, rot);
             }
             transform.localScale = scale;
             m_LocalAuthoritativeNetworkState.IsTeleportingNextFrame = shouldTeleport;
@@ -1169,11 +1136,7 @@ namespace Unity.Netcode.Components
         private void SetStateClientRpc(Vector3 pos, Quaternion rot, Vector3 scale, bool shouldTeleport, ClientRpcParams clientRpcParams = default)
         {
             // Server dictated state is always applied
-            transform.position = pos;
-            transform.rotation = rot;
-            transform.localScale = scale;
-            m_LocalAuthoritativeNetworkState.IsTeleportingNextFrame = shouldTeleport;
-            TryCommitTransform(transform, m_CachedNetworkManager.LocalTime.Time);
+            SetStateInternal(pos, rot, scale, shouldTeleport);
         }
 
         /// <summary>
@@ -1190,12 +1153,7 @@ namespace Unity.Netcode.Components
             {
                 (pos, rot, scale) = OnClientRequestChange(pos, rot, scale);
             }
-
-            transform.position = pos;
-            transform.rotation = rot;
-            transform.localScale = scale;
-            m_LocalAuthoritativeNetworkState.IsTeleportingNextFrame = shouldTeleport;
-            TryCommitTransform(transform, m_CachedNetworkManager.LocalTime.Time);
+            SetStateInternal(pos, rot, scale, shouldTeleport);
         }
 
         /// <summary>

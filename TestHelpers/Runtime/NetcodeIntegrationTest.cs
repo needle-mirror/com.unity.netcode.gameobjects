@@ -7,7 +7,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using System.Runtime.CompilerServices;
-
+using Unity.Netcode.RuntimeTests;
 using Object = UnityEngine.Object;
 
 namespace Unity.Netcode.TestHelpers.Runtime
@@ -23,7 +23,9 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// </summary>
         internal static bool IsRunning { get; private set; }
         protected static TimeoutHelper s_GlobalTimeoutHelper = new TimeoutHelper(8.0f);
-        protected static WaitForSeconds s_DefaultWaitForTick = new WaitForSeconds(1.0f / k_DefaultTickRate);
+        protected static WaitForSecondsRealtime s_DefaultWaitForTick = new WaitForSecondsRealtime(1.0f / k_DefaultTickRate);
+
+        public NetcodeLogAssert NetcodeLogAssert;
 
         /// <summary>
         /// Registered list of all NetworkObjects spawned.
@@ -130,6 +132,18 @@ namespace Unity.Netcode.TestHelpers.Runtime
         protected bool m_EnableVerboseDebug { get; set; }
 
         /// <summary>
+        /// When set to true, this will bypass the entire
+        /// wait for clients to connect process.
+        /// </summary>
+        /// <remarks>
+        /// CAUTION:
+        /// Setting this to true will bypass other helper
+        /// identification related code, so this should only
+        /// be used for connection failure oriented testing
+        /// </remarks>
+        protected bool m_BypassConnectionTimeout { get; set; }
+
+        /// <summary>
         /// Used to display the various integration test
         /// stages and can be used to log verbose information
         /// for troubleshooting an integration test.
@@ -207,6 +221,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
         {
             VerboseDebug($"Entering {nameof(SetUp)}");
 
+            NetcodeLogAssert = new NetcodeLogAssert();
             yield return OnSetup();
             if (m_NetworkManagerInstatiationMode == NetworkManagerInstatiationMode.AllTests && m_ServerNetworkManager == null ||
                 m_NetworkManagerInstatiationMode == NetworkManagerInstatiationMode.PerTest)
@@ -336,7 +351,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
 
             if (m_ServerNetworkManager != null)
             {
-                s_DefaultWaitForTick = new WaitForSeconds(1.0f / m_ServerNetworkManager.NetworkConfig.TickRate);
+                s_DefaultWaitForTick = new WaitForSecondsRealtime(1.0f / m_ServerNetworkManager.NetworkConfig.TickRate);
             }
 
             // Set the player prefab for the server and clients
@@ -452,31 +467,36 @@ namespace Unity.Netcode.TestHelpers.Runtime
                 // Notification that the server and clients have been started
                 yield return OnStartedServerAndClients();
 
-                // Wait for all clients to connect
-                yield return WaitForClientsConnectedOrTimeOut();
-                AssertOnTimeout($"{nameof(StartServerAndClients)} timed out waiting for all clients to be connected!");
-
-                if (m_UseHost || m_ServerNetworkManager.IsHost)
+                // When true, we skip everything else (most likely a connection oriented test)
+                if (!m_BypassConnectionTimeout)
                 {
-                    // Add the server player instance to all m_ClientSidePlayerNetworkObjects entries
-                    var serverPlayerClones = Object.FindObjectsOfType<NetworkObject>().Where((c) => c.IsPlayerObject && c.OwnerClientId == m_ServerNetworkManager.LocalClientId);
-                    foreach (var playerNetworkObject in serverPlayerClones)
+                    // Wait for all clients to connect
+                    yield return WaitForClientsConnectedOrTimeOut();
+
+                    AssertOnTimeout($"{nameof(StartServerAndClients)} timed out waiting for all clients to be connected!");
+
+                    if (m_UseHost || m_ServerNetworkManager.IsHost)
                     {
-                        if (!m_PlayerNetworkObjects.ContainsKey(playerNetworkObject.NetworkManager.LocalClientId))
+                        // Add the server player instance to all m_ClientSidePlayerNetworkObjects entries
+                        var serverPlayerClones = Object.FindObjectsOfType<NetworkObject>().Where((c) => c.IsPlayerObject && c.OwnerClientId == m_ServerNetworkManager.LocalClientId);
+                        foreach (var playerNetworkObject in serverPlayerClones)
                         {
-                            m_PlayerNetworkObjects.Add(playerNetworkObject.NetworkManager.LocalClientId, new Dictionary<ulong, NetworkObject>());
+                            if (!m_PlayerNetworkObjects.ContainsKey(playerNetworkObject.NetworkManager.LocalClientId))
+                            {
+                                m_PlayerNetworkObjects.Add(playerNetworkObject.NetworkManager.LocalClientId, new Dictionary<ulong, NetworkObject>());
+                            }
+                            m_PlayerNetworkObjects[playerNetworkObject.NetworkManager.LocalClientId].Add(m_ServerNetworkManager.LocalClientId, playerNetworkObject);
                         }
-                        m_PlayerNetworkObjects[playerNetworkObject.NetworkManager.LocalClientId].Add(m_ServerNetworkManager.LocalClientId, playerNetworkObject);
                     }
+
+                    ClientNetworkManagerPostStartInit();
+
+                    // Notification that at this time the server and client(s) are instantiated,
+                    // started, and connected on both sides.
+                    yield return OnServerAndClientsConnected();
+
+                    VerboseDebug($"Exiting {nameof(StartServerAndClients)}");
                 }
-
-                ClientNetworkManagerPostStartInit();
-
-                // Notification that at this time the server and client(s) are instantiated,
-                // started, and connected on both sides.
-                yield return OnServerAndClientsConnected();
-
-                VerboseDebug($"Exiting {nameof(StartServerAndClients)}");
             }
         }
 
@@ -571,7 +591,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
             UnloadRemainingScenes();
 
             // reset the m_ServerWaitForTick for the next test to initialize
-            s_DefaultWaitForTick = new WaitForSeconds(1.0f / k_DefaultTickRate);
+            s_DefaultWaitForTick = new WaitForSecondsRealtime(1.0f / k_DefaultTickRate);
             VerboseDebug($"Exiting {nameof(ShutdownAndCleanUp)}");
         }
 
@@ -596,6 +616,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
             }
 
             VerboseDebug($"Exiting {nameof(TearDown)}");
+            NetcodeLogAssert.Dispose();
         }
 
         /// <summary>
@@ -756,6 +777,41 @@ namespace Unity.Netcode.TestHelpers.Runtime
         protected IEnumerator WaitForClientsConnectedOrTimeOut()
         {
             yield return WaitForClientsConnectedOrTimeOut(m_ClientNetworkManagers);
+        }
+
+        internal IEnumerator WaitForMessageReceived<T>(List<NetworkManager> wiatForReceivedBy, ReceiptType type = ReceiptType.Handled) where T : INetworkMessage
+        {
+            // Build our message hook entries tables so we can determine if all clients received spawn or ownership messages
+            var messageHookEntriesForSpawn = new List<MessageHookEntry>();
+            foreach (var clientNetworkManager in wiatForReceivedBy)
+            {
+                var messageHook = new MessageHookEntry(clientNetworkManager, type);
+                messageHook.AssignMessageType<T>();
+                messageHookEntriesForSpawn.Add(messageHook);
+            }
+            // Used to determine if all clients received the CreateObjectMessage
+            var hooks = new MessageHooksConditional(messageHookEntriesForSpawn);
+            yield return WaitForConditionOrTimeOut(hooks);
+            Assert.False(s_GlobalTimeoutHelper.TimedOut);
+        }
+
+        internal IEnumerator WaitForMessagesReceived(List<Type> messagesInOrder, List<NetworkManager> wiatForReceivedBy, ReceiptType type = ReceiptType.Handled)
+        {
+            // Build our message hook entries tables so we can determine if all clients received spawn or ownership messages
+            var messageHookEntriesForSpawn = new List<MessageHookEntry>();
+            foreach (var clientNetworkManager in wiatForReceivedBy)
+            {
+                foreach (var message in messagesInOrder)
+                {
+                    var messageHook = new MessageHookEntry(clientNetworkManager, type);
+                    messageHook.AssignMessageType(message);
+                    messageHookEntriesForSpawn.Add(messageHook);
+                }
+            }
+            // Used to determine if all clients received the CreateObjectMessage
+            var hooks = new MessageHooksConditional(messageHookEntriesForSpawn);
+            yield return WaitForConditionOrTimeOut(hooks);
+            Assert.False(s_GlobalTimeoutHelper.TimedOut);
         }
 
         /// <summary>

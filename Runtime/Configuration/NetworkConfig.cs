@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 using System.Linq;
 using Unity.Collections;
+using UnityEngine;
 using UnityEngine.Serialization;
 
 namespace Unity.Netcode
@@ -209,6 +209,14 @@ namespace Unity.Netcode
         private ulong? m_ConfigHash = null;
 
         /// <summary>
+        /// Clears out the configuration hash value generated for a specific network session
+        /// </summary>
+        internal void ClearConfigHash()
+        {
+            m_ConfigHash = null;
+        }
+
+        /// <summary>
         /// Gets a SHA256 hash of parts of the NetworkConfig instance
         /// </summary>
         /// <param name="cache"></param>
@@ -273,8 +281,6 @@ namespace Unity.Netcode
             Prefabs.Initialize();
         }
 
-        #region Legacy Network Prefab List
-
         [NonSerialized]
         private bool m_DidWarnOldPrefabList = false;
 
@@ -334,7 +340,5 @@ namespace Unity.Netcode
         [FormerlySerializedAs("NetworkPrefabs")]
         [SerializeField]
         internal List<NetworkPrefab> OldPrefabList;
-
-        #endregion
     }
 }

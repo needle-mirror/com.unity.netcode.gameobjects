@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEngine;
 using System.Reflection;
 using Unity.Collections;
+using UnityEngine;
 
 namespace Unity.Netcode
 {
@@ -82,7 +82,7 @@ namespace Unity.Netcode
                 var context = new NetworkContext
                 {
                     SenderId = NetworkManager.ServerClientId,
-                    Timestamp = Time.realtimeSinceStartup,
+                    Timestamp = NetworkManager.RealTimeProvider.RealTimeSinceStartup,
                     SystemOwner = NetworkManager,
                     // header information isn't valid since it's not a real message.
                     // RpcMessage doesn't access this stuff so it's just left empty.
@@ -219,7 +219,7 @@ namespace Unity.Netcode
                 var context = new NetworkContext
                 {
                     SenderId = NetworkManager.ServerClientId,
-                    Timestamp = Time.realtimeSinceStartup,
+                    Timestamp = NetworkManager.RealTimeProvider.RealTimeSinceStartup,
                     SystemOwner = NetworkManager,
                     // header information isn't valid since it's not a real message.
                     // RpcMessage doesn't access this stuff so it's just left empty.
@@ -570,12 +570,9 @@ namespace Unity.Netcode
             if (list == null)
             {
                 list = new List<FieldInfo>();
-                list.AddRange(type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly));
             }
-            else
-            {
-                list.AddRange(type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly));
-            }
+
+            list.AddRange(type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly));
 
             if (type.BaseType != null && type.BaseType != typeof(NetworkBehaviour))
             {
@@ -600,13 +597,7 @@ namespace Unity.Netcode
                 var fieldType = sortedFields[i].FieldType;
                 if (fieldType.IsSubclassOf(typeof(NetworkVariableBase)))
                 {
-                    var instance = (NetworkVariableBase)sortedFields[i].GetValue(this);
-
-                    if (instance == null)
-                    {
-                        throw new Exception($"{GetType().FullName}.{sortedFields[i].Name} cannot be null. All {nameof(NetworkVariableBase)} instances must be initialized.");
-                    }
-
+                    var instance = (NetworkVariableBase)sortedFields[i].GetValue(this) ?? throw new Exception($"{GetType().FullName}.{sortedFields[i].Name} cannot be null. All {nameof(NetworkVariableBase)} instances must be initialized.");
                     instance.Initialize(this);
 
                     var instanceNameProperty = fieldType.GetProperty(nameof(NetworkVariableBase.Name));
@@ -899,10 +890,22 @@ namespace Unity.Netcode
         /// Either BufferSerializerReader or BufferSerializerWriter, depending whether the serializer
         /// is in read mode or write mode.
         /// </typeparam>
+        /// <param name="targetClientId">the relative client identifier being synchronized</param>
         protected virtual void OnSynchronize<T>(ref BufferSerializer<T> serializer) where T : IReaderWriter
         {
 
         }
+
+        /// <summary>
+        /// The relative client identifier targeted for the serialization of this <see cref="NetworkBehaviour"/> instance.
+        /// </summary>
+        /// <remarks>
+        /// This value will be set prior to <see cref="OnSynchronize{T}(ref BufferSerializer{T})"/> being invoked.
+        /// For writing (server-side), this is useful to know which client will receive the serialized data.
+        /// For reading (client-side), this will be the <see cref="NetworkManager.LocalClientId"/>.
+        /// When synchronization of this instance is complete, this value will be reset to 0
+        /// </remarks>
+        protected ulong m_TargetIdBeingSynchronized { get; private set; }
 
         /// <summary>
         /// Internal method that determines if a NetworkBehaviour has additional synchronization data to
@@ -913,8 +916,9 @@ namespace Unity.Netcode
         /// synchronize any remaining NetworkBehaviours.
         /// </remarks>
         /// <returns>true if it wrote synchronization data and false if it did not</returns>
-        internal bool Synchronize<T>(ref BufferSerializer<T> serializer) where T : IReaderWriter
+        internal bool Synchronize<T>(ref BufferSerializer<T> serializer, ulong targetClientId = 0) where T : IReaderWriter
         {
+            m_TargetIdBeingSynchronized = targetClientId;
             if (serializer.IsWriter)
             {
                 // Get the writer to handle seeking and determining how many bytes were written
@@ -949,6 +953,8 @@ namespace Unity.Netcode
                 }
                 var finalPosition = writer.Position;
 
+                // Reset before exiting
+                m_TargetIdBeingSynchronized = default;
                 // If we wrote nothing then skip writing anything for this NetworkBehaviour
                 if (finalPosition == positionBeforeSynchronize || threwException)
                 {
@@ -1001,6 +1007,9 @@ namespace Unity.Netcode
                     }
                     synchronizationError = true;
                 }
+
+                // Reset before exiting
+                m_TargetIdBeingSynchronized = default;
 
                 // Skip over the entry if deserialization fails
                 if (synchronizationError)

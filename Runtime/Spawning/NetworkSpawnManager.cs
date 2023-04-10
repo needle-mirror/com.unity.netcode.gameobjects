@@ -154,7 +154,7 @@ namespace Unity.Netcode
 
         internal ulong GetNetworkObjectId()
         {
-            if (ReleasedNetworkObjectIds.Count > 0 && NetworkManager.NetworkConfig.RecycleNetworkIds && (Time.unscaledTime - ReleasedNetworkObjectIds.Peek().ReleaseTime) >= NetworkManager.NetworkConfig.NetworkIdRecycleDelay)
+            if (ReleasedNetworkObjectIds.Count > 0 && NetworkManager.NetworkConfig.RecycleNetworkIds && (NetworkManager.RealTimeProvider.UnscaledTime - ReleasedNetworkObjectIds.Peek().ReleaseTime) >= NetworkManager.NetworkConfig.NetworkIdRecycleDelay)
             {
                 return ReleasedNetworkObjectIds.Dequeue().NetworkId;
             }
@@ -405,6 +405,9 @@ namespace Unity.Netcode
 
             if (networkObject != null)
             {
+                networkObject.DestroyWithScene = sceneObject.DestroyWithScene;
+                networkObject.NetworkSceneHandle = sceneObject.NetworkSceneHandle;
+
                 // SPECIAL CASE FOR IN-SCENE PLACED:  (only when the parent has a NetworkObject)
                 // This is a special case scenario where a late joining client has joined and loaded one or
                 // more scenes that contain nested in-scene placed NetworkObject children yet the server's
@@ -609,6 +612,12 @@ namespace Unity.Netcode
                     continue;
                 }
                 childObject.IsSceneObject = sceneObject;
+            }
+
+            // Only dynamically spawned NetworkObjects are allowed
+            if (!sceneObject)
+            {
+                networkObject.SubscribeToActiveSceneForSynch();
             }
         }
 
@@ -848,7 +857,7 @@ namespace Unity.Netcode
                     ReleasedNetworkObjectIds.Enqueue(new ReleasedNetworkId()
                     {
                         NetworkId = networkObject.NetworkObjectId,
-                        ReleaseTime = Time.unscaledTime
+                        ReleaseTime = NetworkManager.RealTimeProvider.UnscaledTime
                     });
                 }
 

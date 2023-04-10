@@ -298,6 +298,8 @@ namespace Unity.Netcode
 
         internal IDeferredMessageManager DeferredMessageManager { get; private set; }
 
+        internal IRealTimeProvider RealTimeProvider { get; private set; }
+
         /// <summary>
         /// Gets the CustomMessagingManager for this NetworkManager
         /// </summary>
@@ -449,9 +451,27 @@ namespace Unity.Netcode
         public event Action<ulong> OnClientDisconnectCallback = null;
 
         /// <summary>
-        /// The callback to invoke once the server is ready
+        /// This callback is invoked when the local server is started and listening for incoming connections.
         /// </summary>
         public event Action OnServerStarted = null;
+
+        /// <summary>
+        /// The callback to invoke once the local client is ready
+        /// </summary>
+        public event Action OnClientStarted = null;
+
+        /// <summary>
+        /// This callback is invoked once the local server is stopped.
+        /// </summary>
+        /// <param name="arg1">The first parameter of this event will be set to <see cref="true"/> when stopping a host instance and <see cref="false"/> when stopping a server instance.</param>
+        public event Action<bool> OnServerStopped = null;
+
+        /// <summary>
+        /// The callback to invoke once the local client stops
+        /// </summary>
+        /// <remarks>The parameter states whether the client was running in host mode</remarks>
+        /// <param name="arg1">The first parameter of this event will be set to <see cref="true"/> when stopping the host client and <see cref="false"/> when stopping a standard client instance.</param>
+        public event Action<bool> OnClientStopped = null;
 
         /// <summary>
         /// The callback to invoke if the <see cref="NetworkTransport"/> fails.
@@ -735,6 +755,8 @@ namespace Unity.Netcode
 
             DeferredMessageManager = ComponentFactory.Create<IDeferredMessageManager>(this);
 
+            RealTimeProvider = ComponentFactory.Create<IRealTimeProvider>(this);
+
             CustomMessagingManager = new CustomMessagingManager(this);
 
             SceneManager = new NetworkSceneManager(this);
@@ -908,6 +930,7 @@ namespace Unity.Netcode
             IsClient = true;
             IsListening = true;
 
+            OnClientStarted?.Invoke();
             return true;
         }
 
@@ -989,12 +1012,13 @@ namespace Unity.Netcode
 
             SpawnManager.ServerSpawnSceneObjectsOnStartSweep();
 
+            OnServerStarted?.Invoke();
+            OnClientStarted?.Invoke();
+
             // This assures that any in-scene placed NetworkObject is spawned and
             // any associated NetworkBehaviours' netcode related properties are
             // set prior to invoking OnClientConnected.
             InvokeOnClientConnectedCallback(LocalClientId);
-
-            OnServerStarted?.Invoke();
 
             return true;
         }
@@ -1108,13 +1132,13 @@ namespace Unity.Netcode
             return isParented;
         }
 
-        static internal string GenerateNestedNetworkManagerMessage(Transform transform)
+        internal static string GenerateNestedNetworkManagerMessage(Transform transform)
         {
             return $"{transform.name} is nested under {transform.root.name}. NetworkManager cannot be nested.\n";
         }
 
 #if UNITY_EDITOR
-        static internal INetworkManagerHelper NetworkManagerHelper;
+        internal static INetworkManagerHelper NetworkManagerHelper;
         /// <summary>
         /// Interface for NetworkManagerHelper
         /// </summary>
@@ -1195,13 +1219,12 @@ namespace Unity.Netcode
                 NetworkLog.LogInfo(nameof(ShutdownInternal));
             }
 
-            if (IsServer)
+            bool wasServer = IsServer;
+            bool wasClient = IsClient;
+            if (wasServer)
             {
                 // make sure all messages are flushed before transport disconnect clients
-                if (MessagingSystem != null)
-                {
-                    MessagingSystem.ProcessSendQueues();
-                }
+                MessagingSystem?.ProcessSendQueues();
 
                 var disconnectedIds = new HashSet<ulong>();
 
@@ -1237,10 +1260,22 @@ namespace Unity.Netcode
                 }
             }
 
+            // Unregister network updates before trying to disconnect the client
+            this.UnregisterAllNetworkUpdates();
+
             if (IsClient && IsListening)
             {
                 // Client only, send disconnect to server
-                NetworkConfig.NetworkTransport.DisconnectLocalClient();
+                // If transport throws and exception, log the exception and
+                // continue the shutdown sequence (or forever be shutting down)
+                try
+                {
+                    NetworkConfig.NetworkTransport.DisconnectLocalClient();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogException(ex);
+                }
             }
 
             IsConnectedClient = false;
@@ -1261,8 +1296,6 @@ namespace Unity.Netcode
             IsServer = false;
             IsClient = false;
 
-            this.UnregisterAllNetworkUpdates();
-
             if (NetworkTickSystem != null)
             {
                 NetworkTickSystem.Tick -= OnNetworkManagerTick;
@@ -1280,10 +1313,7 @@ namespace Unity.Netcode
                 NetworkConfig.NetworkTransport.OnTransportEvent -= HandleRawTransportPoll;
             }
 
-            if (DeferredMessageManager != null)
-            {
-                DeferredMessageManager.CleanupAllTriggers();
-            }
+            DeferredMessageManager?.CleanupAllTriggers();
 
             if (SceneManager != null)
             {
@@ -1318,6 +1348,22 @@ namespace Unity.Netcode
             m_StopProcessingMessages = false;
 
             ClearClients();
+
+            if (wasClient)
+            {
+                OnClientStopped?.Invoke(wasServer);
+            }
+            if (wasServer)
+            {
+                OnServerStopped?.Invoke(wasClient);
+            }
+
+            // This cleans up the internal prefabs list
+            NetworkConfig?.Prefabs.Shutdown();
+
+            // Reset the configuration hash for next session in the event
+            // that the prefab list changes
+            NetworkConfig?.ClearConfigHash();
         }
 
         /// <inheritdoc />
@@ -1417,7 +1463,7 @@ namespace Unity.Netcode
             }
 
             // Only update RTT here, server time is updated by time sync messages
-            var reset = NetworkTimeSystem.Advance(Time.unscaledDeltaTime);
+            var reset = NetworkTimeSystem.Advance(RealTimeProvider.UnscaledDeltaTime);
             if (reset)
             {
                 NetworkTickSystem.Reset(NetworkTimeSystem.LocalTime, NetworkTimeSystem.ServerTime);
@@ -1426,7 +1472,7 @@ namespace Unity.Netcode
 
             if (IsServer == false)
             {
-                NetworkTimeSystem.Sync(NetworkTimeSystem.LastSyncedServerTimeSec + Time.unscaledDeltaTime, NetworkConfig.NetworkTransport.GetCurrentRtt(ServerClientId) / 1000d);
+                NetworkTimeSystem.Sync(NetworkTimeSystem.LastSyncedServerTimeSec + RealTimeProvider.UnscaledDeltaTime, NetworkConfig.NetworkTransport.GetCurrentRtt(ServerClientId) / 1000d);
             }
         }
 
@@ -1435,6 +1481,10 @@ namespace Unity.Netcode
 
             if (!m_ShuttingDown || !m_StopProcessingMessages)
             {
+                // This should be invoked just prior to the MessagingSystem
+                // processes its outbound queue.
+                SceneManager.CheckForAndSendNetworkObjectSceneChanged();
+
                 MessagingSystem.ProcessSendQueues();
                 NetworkMetrics.UpdateNetworkObjectsCount(SpawnManager.SpawnedObjects.Count);
                 NetworkMetrics.UpdateConnectionsCount((IsServer) ? ConnectedClients.Count : 1);
@@ -1486,10 +1536,9 @@ namespace Unity.Netcode
                 // we should always force the rebuilding of the NetworkConfig hash value
                 ConfigHash = NetworkConfig.GetConfig(false),
                 ShouldSendConnectionData = NetworkConfig.ConnectionApproval,
-                ConnectionData = NetworkConfig.ConnectionData
+                ConnectionData = NetworkConfig.ConnectionData,
+                MessageVersions = new NativeArray<MessageVersionData>(MessagingSystem.MessageHandlers.Length, Allocator.Temp)
             };
-
-            message.MessageVersions = new NativeArray<MessageVersionData>(MessagingSystem.MessageHandlers.Length, Allocator.Temp);
             for (int index = 0; index < MessagingSystem.MessageHandlers.Length; index++)
             {
                 if (MessagingSystem.MessageTypes[index] != null)
@@ -1509,7 +1558,7 @@ namespace Unity.Netcode
 
         private IEnumerator ApprovalTimeout(ulong clientId)
         {
-            var timeStarted = IsServer ? LocalTime.TimeAsFloat : Time.realtimeSinceStartup;
+            var timeStarted = IsServer ? LocalTime.TimeAsFloat : RealTimeProvider.RealTimeSinceStartup;
             var timedOut = false;
             var connectionApproved = false;
             var connectionNotApproved = false;
@@ -1519,7 +1568,7 @@ namespace Unity.Netcode
             {
                 yield return null;
                 // Check if we timed out
-                timedOut = timeoutMarker < (IsServer ? LocalTime.TimeAsFloat : Time.realtimeSinceStartup);
+                timedOut = timeoutMarker < (IsServer ? LocalTime.TimeAsFloat : RealTimeProvider.RealTimeSinceStartup);
 
                 if (IsServer)
                 {
@@ -1861,8 +1910,10 @@ namespace Unity.Netcode
 
             if (!string.IsNullOrEmpty(reason))
             {
-                var disconnectReason = new DisconnectReasonMessage();
-                disconnectReason.Reason = reason;
+                var disconnectReason = new DisconnectReasonMessage
+                {
+                    Reason = reason
+                };
                 SendMessage(ref disconnectReason, NetworkDelivery.Reliable, clientId);
             }
             MessagingSystem.ProcessSendQueues();
@@ -2011,15 +2062,19 @@ namespace Unity.Netcode
 
                 if (response.CreatePlayerObject)
                 {
-                    var playerPrefabHash = response.PlayerPrefabHash ?? NetworkConfig.PlayerPrefab.GetComponent<NetworkObject>().GlobalObjectIdHash;
+                    var prefabNetworkObject = NetworkConfig.PlayerPrefab.GetComponent<NetworkObject>();
+                    var playerPrefabHash = response.PlayerPrefabHash ?? prefabNetworkObject.GlobalObjectIdHash;
 
                     // Generate a SceneObject for the player object to spawn
+                    // Note: This is only to create the local NetworkObject,
+                    // many of the serialized properties of the player prefab
+                    // will be set when instantiated.
                     var sceneObject = new NetworkObject.SceneObject
                     {
                         OwnerClientId = ownerClientId,
                         IsPlayerObject = true,
                         IsSceneObject = false,
-                        HasTransform = true,
+                        HasTransform = prefabNetworkObject.SynchronizeTransform,
                         Hash = playerPrefabHash,
                         TargetClientId = ownerClientId,
                         Transform = new NetworkObject.SceneObject.TransformData
@@ -2105,8 +2160,10 @@ namespace Unity.Netcode
             {
                 if (!string.IsNullOrEmpty(response.Reason))
                 {
-                    var disconnectReason = new DisconnectReasonMessage();
-                    disconnectReason.Reason = response.Reason;
+                    var disconnectReason = new DisconnectReasonMessage
+                    {
+                        Reason = response.Reason
+                    };
                     SendMessage(ref disconnectReason, NetworkDelivery.Reliable, ownerClientId);
 
                     MessagingSystem.ProcessSendQueues();

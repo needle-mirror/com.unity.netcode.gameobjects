@@ -432,6 +432,18 @@ namespace Unity.Netcode.TestHelpers.Runtime
         }
 
         /// <summary>
+        /// CreateAndStartNewClient Only
+        /// Override this method to bypass the waiting for a client to connect.
+        /// </summary>
+        /// <remarks>
+        /// Use this for testing connection and disconnection scenarios
+        /// </remarks>
+        protected virtual bool ShouldWaitForNewClientToConnect(NetworkManager networkManager)
+        {
+            return true;
+        }
+
+        /// <summary>
         /// This will create, start, and connect a new client while in the middle of an
         /// integration test.
         /// </summary>
@@ -448,26 +460,29 @@ namespace Unity.Netcode.TestHelpers.Runtime
 
             if (LogAllMessages)
             {
-                networkManager.MessagingSystem.Hook(new DebugNetworkHooks());
+                networkManager.ConnectionManager.MessageManager.Hook(new DebugNetworkHooks());
             }
 
             AddRemoveNetworkManager(networkManager, true);
 
             OnNewClientStarted(networkManager);
 
-            // Wait for the new client to connect
-            yield return WaitForClientsConnectedOrTimeOut();
-
-            OnNewClientStartedAndConnected(networkManager);
-            if (s_GlobalTimeoutHelper.TimedOut)
+            if (ShouldWaitForNewClientToConnect(networkManager))
             {
-                AddRemoveNetworkManager(networkManager, false);
-                Object.DestroyImmediate(networkManager.gameObject);
-            }
+                // Wait for the new client to connect
+                yield return WaitForClientsConnectedOrTimeOut();
 
-            AssertOnTimeout($"{nameof(CreateAndStartNewClient)} timed out waiting for the new client to be connected!");
-            ClientNetworkManagerPostStart(networkManager);
-            VerboseDebug($"[{networkManager.name}] Created and connected!");
+                OnNewClientStartedAndConnected(networkManager);
+                if (s_GlobalTimeoutHelper.TimedOut)
+                {
+                    AddRemoveNetworkManager(networkManager, false);
+                    Object.DestroyImmediate(networkManager.gameObject);
+                }
+
+                AssertOnTimeout($"{nameof(CreateAndStartNewClient)} timed out waiting for the new client to be connected!");
+                ClientNetworkManagerPostStart(networkManager);
+                VerboseDebug($"[{networkManager.name}] Created and connected!");
+            }
         }
 
         /// <summary>
@@ -487,7 +502,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
 
             if (LogAllMessages)
             {
-                networkManager.MessagingSystem.Hook(new DebugNetworkHooks());
+                networkManager.ConnectionManager.MessageManager.Hook(new DebugNetworkHooks());
             }
 
             AddRemoveNetworkManager(networkManager, true);
@@ -1056,10 +1071,10 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// </summary>
         protected void EnableMessageLogging()
         {
-            m_ServerNetworkManager.MessagingSystem.Hook(new DebugNetworkHooks());
+            m_ServerNetworkManager.ConnectionManager.MessageManager.Hook(new DebugNetworkHooks());
             foreach (var client in m_ClientNetworkManagers)
             {
-                client.MessagingSystem.Hook(new DebugNetworkHooks());
+                client.ConnectionManager.MessageManager.Hook(new DebugNetworkHooks());
             }
         }
 
@@ -1578,12 +1593,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
                     foreach (var behaviour in Object.FindObjectsOfType<NetworkBehaviour>())
 #endif
                     {
-                        var method = behaviour.GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (method == null)
-                        {
-                            method = behaviour.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
-                        }
-
+                        var method = behaviour.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                         method?.Invoke(behaviour, new object[] { });
                     }
                 }

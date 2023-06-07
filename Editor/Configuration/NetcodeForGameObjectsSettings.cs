@@ -1,6 +1,4 @@
 using UnityEditor;
-using UnityEngine;
-
 
 namespace Unity.Netcode.Editor.Configuration
 {
@@ -37,17 +35,6 @@ namespace Unity.Netcode.Editor.Configuration
         internal static void SetAutoAddNetworkObjectSetting(bool autoAddSetting)
         {
             EditorPrefs.SetBool(AutoAddNetworkObjectIfNoneExists, autoAddSetting);
-        }
-    }
-
-    [FilePath("ProjectSettings/NetcodeForGameObjects.settings", FilePathAttribute.Location.ProjectFolder)]
-    internal class NetcodeForGameObjectsProjectSettings : ScriptableSingleton<NetcodeForGameObjectsProjectSettings>
-    {
-        [SerializeField] public bool GenerateDefaultNetworkPrefabs = true;
-
-        internal void SaveSettings()
-        {
-            Save(true);
         }
     }
 }

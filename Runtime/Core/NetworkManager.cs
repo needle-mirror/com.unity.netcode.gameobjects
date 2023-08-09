@@ -586,7 +586,7 @@ namespace Unity.Netcode
         /// <param name="size"></param>
         public int MaximumTransmissionUnitSize
         {
-            set => MessageManager.NonFragmentedMessageMaxSize = value;
+            set => MessageManager.NonFragmentedMessageMaxSize = value & ~7; // Round down to nearest word aligned size
             get => MessageManager.NonFragmentedMessageMaxSize;
         }
 
@@ -1012,6 +1012,9 @@ namespace Unity.Netcode
                 // or not. (why we pass in "IsClient")
                 OnServerStopped?.Invoke(ConnectionManager.LocalClient.IsClient);
             }
+
+            // In the event shutdown is invoked within OnClientStopped or OnServerStopped, set it to false again
+            m_ShuttingDown = false;
 
             // Reset the client's roles
             ConnectionManager.LocalClient.SetRole(false, false);

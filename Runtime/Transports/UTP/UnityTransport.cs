@@ -727,6 +727,7 @@ namespace Unity.Netcode.Transports.UTP
             public SendTarget Target;
             public BatchedSendQueue Queue;
             public NetworkPipeline ReliablePipeline;
+            public int MTU;
 
             public void Execute()
             {
@@ -749,7 +750,7 @@ namespace Unity.Netcode.Transports.UTP
                     // in the stream (the send queue does that automatically) we are sure they'll be
                     // reassembled properly at the other end. This allows us to lift the limit of ~44KB
                     // on reliable payloads (because of the reliable window size).
-                    var written = pipeline == ReliablePipeline ? Queue.FillWriterWithBytes(ref writer) : Queue.FillWriterWithMessages(ref writer);
+                    var written = pipeline == ReliablePipeline ? Queue.FillWriterWithBytes(ref writer, MTU) : Queue.FillWriterWithMessages(ref writer);
 
                     result = Driver.EndSend(writer);
                     if (result == written)
@@ -783,12 +784,21 @@ namespace Unity.Netcode.Transports.UTP
             {
                 return;
             }
+
+            var mtu = 0;
+            if (NetworkManager)
+            {
+                var ngoClientId = NetworkManager.ConnectionManager.TransportIdToClientId(sendTarget.ClientId);
+                mtu = NetworkManager.GetPeerMTU(ngoClientId);
+            }
+
             new SendBatchedMessagesJob
             {
                 Driver = m_Driver.ToConcurrent(),
                 Target = sendTarget,
                 Queue = queue,
-                ReliablePipeline = m_ReliableSequencedPipeline
+                ReliablePipeline = m_ReliableSequencedPipeline,
+                MTU = mtu,
             }.Run();
         }
 
@@ -1560,6 +1570,21 @@ namespace Unity.Netcode.Transports.UTP
             }
 #endif
 
+#if UTP_TRANSPORT_2_1_ABOVE
+            if (m_ProtocolType == ProtocolType.RelayUnityTransport)
+            {
+                if (m_UseWebSockets && m_RelayServerData.IsWebSocket == 0)
+                {
+                    Debug.LogError("Transport is configured to use WebSockets, but Relay server data isn't. Be sure to use \"wss\" as the connection type when creating the server data (instead of \"dtls\" or \"udp\").");
+                }
+
+                if (!m_UseWebSockets && m_RelayServerData.IsWebSocket != 0)
+                {
+                    Debug.LogError("Relay server data indicates usage of WebSockets, but \"Use WebSockets\" checkbox isn't checked under \"Unity Transport\" component.");
+                }
+            }
+#endif
+
 #if UTP_TRANSPORT_2_0_ABOVE
             if (m_UseWebSockets)
             {
@@ -1567,7 +1592,7 @@ namespace Unity.Netcode.Transports.UTP
             }
             else
             {
-#if UNITY_WEBGL
+#if UNITY_WEBGL && !UNITY_EDITOR
                 Debug.LogWarning($"WebSockets were used even though they're not selected in NetworkManager. You should check {nameof(UseWebSockets)}', on the Unity Transport component, to silence this warning.");
                 driver = NetworkDriver.Create(new WebSocketNetworkInterface(), m_NetworkSettings);
 #else

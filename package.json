@@ -2,23 +2,23 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "unity": "2020.3",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.10.1",
     "com.unity.transport": "1.4.0"
   },
   "_upm": {
-    "changelog": "### Added\n\n- exposed NetworkObject.GetNetworkBehaviourAtOrderIndex as a public API (#2724)\n- Added context menu tool that provides users with the ability to quickly update the GlobalObjectIdHash value for all in-scene placed prefab instances that were created prior to adding a NetworkObject component to it. (#2707)\n- Added methods NetworkManager.SetPeerMTU and NetworkManager.GetPeerMTU to be able to set MTU sizes per-peer (#2676)\n- Added `GenerateSerializationForGenericParameterAttribute`, which can be applied to user-created Network Variable types to ensure the codegen generates serialization for the generic types they wrap. (#2694)\n- Added `GenerateSerializationForTypeAttribute`, which can be applied to any class or method to ensure the codegen generates serialization for the specific provided type. (#2694)\n- Exposed `NetworkVariableSerialization<T>.Read`, `NetworkVariableSerialization<T>.Write`, `NetworkVariableSerialization<T>.AreEqual`, and `NetworkVariableSerialization<T>.Duplicate` to further support the creation of user-created network variables by allowing users to access the generated serialization methods and serialize generic types efficiently without boxing. (#2694)\n- Added `NetworkVariableBase.MarkNetworkBehaviourDirty` so that user-created network variable types can mark their containing `NetworkBehaviour` to be processed by the update loop. (#2694)\n\n### Fixed\n\n- Fixed issue where the server side `NetworkSceneManager` instance was not adding the currently active scene to its list of scenes loaded. (#2723)\n- Generic NetworkBehaviour types no longer result in compile errors or runtime errors (#2720)\n- Rpcs within Generic NetworkBehaviour types can now serialize parameters of the class's generic types (but may not have generic types of their own) (#2720)\n- Errors are no longer thrown when entering play mode with domain reload disabled (#2720)\n- NetworkSpawn is now correctly called each time when entering play mode with scene reload disabled (#2720)\n- NetworkVariables of non-integer types will no longer break the inspector (#2714)\n- NetworkVariables with NonSerializedAttribute will not appear in the inspector (#2714)\n- Fixed issue where `UnityTransport` would attempt to establish WebSocket connections even if using UDP/DTLS Relay allocations when the build target was WebGL. This only applied to working in the editor since UDP/DTLS can't work in the browser. (#2695)\n- Fixed issue where a `NetworkBehaviour` component's `OnNetworkDespawn` was not being invoked on the host-server side for an in-scene placed `NetworkObject` when a scene was unloaded (during a scene transition) and the `NetworkBehaviour` component was positioned/ordered before the `NetworkObject` component. (#2685)\n- Fixed issue where `SpawnWithObservers` was not being honored when `NetworkConfig.EnableSceneManagement` was disabled. (#2682)\n- Fixed issue where `NetworkAnimator` was not internally tracking changes to layer weights which prevented proper layer weight synchronization back to the original layer weight value. (#2674)\n- Fixed \"writing past the end of the buffer\" error when calling ResetDirty() on managed network variables that are larger than 256 bytes when serialized. (#2670)\n- Fixed issue where generation of the `DefaultNetworkPrefabs` asset was not enabled by default. (#2662)\n- Fixed issue where the `GlobalObjectIdHash` value could be updated but the asset not marked as dirty. (#2662)\n- Fixed issue where the `GlobalObjectIdHash` value of a (network) prefab asset could be assigned an incorrect value when editing the prefab in a temporary scene. (#2662)\n- Fixed issue where the `GlobalObjectIdHash` value generated after creating a (network) prefab from an object constructed within the scene would not be the correct final value in a stand alone build. (#2662)\n\n### Changed\n\n- Updated dependency on `com.unity.transport` to version 1.4.0. (#2716)"
+    "changelog": "### Added\n\n### Fixed\n\n- Fixed a bug where having a class with Rpcs that inherits from a class without Rpcs that inherits from NetworkVariable would cause a compile error. (#2751)\n- Fixed issue where `NetworkBehaviour.Synchronize` was not truncating the write buffer if nothing was serialized during `NetworkBehaviour.OnSynchronize` causing an additional 6 bytes to be written per `NetworkBehaviour` component instance. (#2749)\n\n### Changed"
   },
   "upmCi": {
-    "footprint": "87fd22da62ed4e055a6eead5cea85b4b449eded0"
+    "footprint": "0aa1a9720f4e4850c481cc1bb159b646494808e1"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@1.7/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "f4004c72eb46bf2aac62bc71b599017bd0570fdb"
+    "revision": "5df824c7588b43c29238a927d14642d5f94129ff"
   },
   "samples": [
     {

@@ -305,8 +305,12 @@ namespace Unity.Netcode.TestHelpers.Runtime
         public IEnumerator SetUp()
         {
             VerboseDebug($"Entering {nameof(SetUp)}");
-
             NetcodeLogAssert = new NetcodeLogAssert();
+            if (m_EnableTimeTravel)
+            {
+                // Setup the frames per tick for time travel advance to next tick
+                ConfigureFramesPerTick();
+            }
             if (m_SetupIsACoroutine)
             {
                 yield return OnSetup();
@@ -732,6 +736,16 @@ namespace Unity.Netcode.TestHelpers.Runtime
                     Assert.Fail("Failed to start instances");
                 }
 
+                // When scene management is enabled, we need to re-apply the scenes populated list since we have overriden the ISceneManagerHandler
+                // imeplementation at this point. This assures any pre-loaded scenes will be automatically assigned to the server and force clients 
+                // to load their own scenes.
+                if (m_ServerNetworkManager.NetworkConfig.EnableSceneManagement)
+                {
+                    var scenesLoaded = m_ServerNetworkManager.SceneManager.ScenesLoaded;
+                    m_ServerNetworkManager.SceneManager.SceneManagerHandler.PopulateLoadedScenes(ref scenesLoaded, m_ServerNetworkManager);
+                }
+
+
                 if (LogAllMessages)
                 {
                     EnableMessageLogging();
@@ -797,6 +811,12 @@ namespace Unity.Netcode.TestHelpers.Runtime
                 {
                     Debug.LogError("Failed to start instances");
                     Assert.Fail("Failed to start instances");
+                }
+
+                // Time travel does not play nice with scene loading, clear out server side pre-loaded scenes.
+                if (m_ServerNetworkManager.NetworkConfig.EnableSceneManagement)
+                {
+                    m_ServerNetworkManager.SceneManager.ScenesLoaded.Clear();
                 }
 
                 if (LogAllMessages)
@@ -1544,8 +1564,42 @@ namespace Unity.Netcode.TestHelpers.Runtime
             }
         }
 
+        protected virtual uint GetTickRate()
+        {
+            return k_DefaultTickRate;
+        }
+
+        protected virtual int GetFrameRate()
+        {
+            return Application.targetFrameRate == 0 ? 60 : Application.targetFrameRate;
+        }
+
+        private int m_FramesPerTick = 0;
+        private float m_TickFrequency = 0;
+
+        /// <summary>
+        /// Recalculates the <see cref="m_TickFrequency"/> and <see cref="m_FramesPerTick"/> that is
+        /// used in <see cref="TimeTravelAdvanceTick"/>.
+        /// </summary>
+        protected void ConfigureFramesPerTick()
+        {
+            m_TickFrequency = 1.0f / GetTickRate();
+            m_FramesPerTick = Math.Max((int)(m_TickFrequency / GetFrameRate()), 1);
+        }
+
         /// <summary>
         /// Helper function to time travel exactly one tick's worth of time at the current frame and tick rates.
+        /// This is NetcodeIntegrationTest instance relative and will automatically adjust based on <see cref="GetFrameRate"/>
+        /// and <see cref="GetTickRate"/>.
+        /// </summary>
+        protected void TimeTravelAdvanceTick()
+        {
+            TimeTravel(m_TickFrequency, m_FramesPerTick);
+        }
+
+        /// <summary>
+        /// Helper function to time travel exactly one tick's worth of time at the current frame and tick rates.
+        /// ** Is based on the global k_DefaultTickRate and is not local to each NetcodeIntegrationTest instance **
         /// </summary>
         public static void TimeTravelToNextTick()
         {
@@ -1555,7 +1609,6 @@ namespace Unity.Netcode.TestHelpers.Runtime
             {
                 frameRate = 60;
             }
-
             var frames = Math.Max((int)(timePassed / frameRate), 1);
             TimeTravel(timePassed, frames);
         }

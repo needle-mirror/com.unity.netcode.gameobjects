@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Collections;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -42,6 +43,8 @@ namespace Unity.Netcode
                         ConnectionManager.ProcessPendingApprovals();
                         ConnectionManager.PollAndHandleNetworkEvents();
 
+                        DeferredMessageManager.ProcessTriggers(IDeferredNetworkMessageManager.TriggerType.OnNextFrame, 0);
+
                         MessageManager.ProcessIncomingMessageQueue();
                         MessageManager.CleanupDisconnectedClients();
                     }
@@ -70,10 +73,86 @@ namespace Unity.Netcode
 
                         if (m_ShuttingDown)
                         {
-                            ShutdownInternal();
+                            // Host-server will disconnect any connected clients prior to finalizing its shutdown
+                            if (IsServer)
+                            {
+                                ProcessServerShutdown();
+                            }
+                            else
+                            {
+                                // Clients just disconnect immediately
+                                ShutdownInternal();
+                            }
                         }
                     }
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Used to provide a graceful shutdown sequence
+        /// </summary>
+        internal enum ServerShutdownStates
+        {
+            None,
+            WaitForClientDisconnects,
+            InternalShutdown,
+            ShuttingDown,
+        };
+
+        internal ServerShutdownStates ServerShutdownState;
+        private float m_ShutdownTimeout;
+
+        /// <summary>
+        /// This is a "soft shutdown" where the host or server will disconnect
+        /// all clients, with a provided reasons, prior to invoking its final
+        /// internal shutdown.
+        /// </summary>
+        internal void ProcessServerShutdown()
+        {
+            var minClientCount = IsHost ? 2 : 1;
+            switch (ServerShutdownState)
+            {
+                case ServerShutdownStates.None:
+                    {
+                        if (ConnectedClients.Count >= minClientCount)
+                        {
+                            var hostServer = IsHost ? "host" : "server";
+                            var disconnectReason = $"Disconnected due to {hostServer} shutting down.";
+                            for (int i = ConnectedClientsIds.Count - 1; i >= 0; i--)
+                            {
+                                var clientId = ConnectedClientsIds[i];
+                                if (clientId == ServerClientId)
+                                {
+                                    continue;
+                                }
+                                ConnectionManager.DisconnectClient(clientId, disconnectReason);
+                            }
+                            ServerShutdownState = ServerShutdownStates.WaitForClientDisconnects;
+                            m_ShutdownTimeout = Time.realtimeSinceStartup + 5.0f;
+                        }
+                        else
+                        {
+                            ServerShutdownState = ServerShutdownStates.InternalShutdown;
+                            ProcessServerShutdown();
+                        }
+                        break;
+                    }
+                case ServerShutdownStates.WaitForClientDisconnects:
+                    {
+                        if (ConnectedClients.Count < minClientCount || m_ShutdownTimeout < Time.realtimeSinceStartup)
+                        {
+                            ServerShutdownState = ServerShutdownStates.InternalShutdown;
+                            ProcessServerShutdown();
+                        }
+                        break;
+                    }
+                case ServerShutdownStates.InternalShutdown:
+                    {
+                        ServerShutdownState = ServerShutdownStates.ShuttingDown;
+                        ShutdownInternal();
+                        break;
+                    }
             }
         }
 
@@ -104,7 +183,7 @@ namespace Unity.Netcode
         /// <summary>
         /// Gets a list of just the IDs of all connected clients. This is only accessible on the server.
         /// </summary>
-        public IReadOnlyList<ulong> ConnectedClientsIds => IsServer ? ConnectionManager.ConnectedClientIds : throw new NotServerException($"{nameof(ConnectionManager.ConnectedClientIds)} should only be accessed on server.");
+        public IReadOnlyList<ulong> ConnectedClientsIds => ConnectionManager.ConnectedClientIds;
 
         /// <summary>
         /// Gets the local <see cref="NetworkClient"/> for this client.
@@ -121,6 +200,11 @@ namespace Unity.Netcode
         /// Gets Whether or not a server is running
         /// </summary>
         public bool IsServer => ConnectionManager.LocalClient.IsServer;
+
+        /// <summary>
+        /// Gets whether or not the current server (local or remote) is a host - i.e., also a client
+        /// </summary>
+        public bool ServerIsHost => ConnectionManager.ConnectedClientIds.Contains(ServerClientId);
 
         /// <summary>
         /// Gets Whether or not a client is running
@@ -209,6 +293,8 @@ namespace Unity.Netcode
 
         /// <summary>
         /// The callback to invoke once a client connects. This callback is only ran on the server and on the local client that connects.
+        ///
+        /// It is recommended to use OnConnectionEvent instead, as this will eventually be deprecated
         /// </summary>
         public event Action<ulong> OnClientConnectedCallback
         {
@@ -218,11 +304,23 @@ namespace Unity.Netcode
 
         /// <summary>
         /// The callback to invoke when a client disconnects. This callback is only ran on the server and on the local client that disconnects.
+        ///
+        /// It is recommended to use OnConnectionEvent instead, as this will eventually be deprecated
         /// </summary>
         public event Action<ulong> OnClientDisconnectCallback
         {
             add => ConnectionManager.OnClientDisconnectCallback += value;
             remove => ConnectionManager.OnClientDisconnectCallback -= value;
+        }
+
+        /// <summary>
+        /// The callback to invoke on any connection event. See <see cref="ConnectionEvent"/> and <see cref="ConnectionEventData"/>
+        /// for more info.
+        /// </summary>
+        public event Action<NetworkManager, ConnectionEventData> OnConnectionEvent
+        {
+            add => ConnectionManager.OnConnectionEvent += value;
+            remove => ConnectionManager.OnConnectionEvent -= value;
         }
 
         /// <summary>
@@ -378,6 +476,24 @@ namespace Unity.Netcode
         public NetworkSpawnManager SpawnManager { get; private set; }
 
         internal IDeferredNetworkMessageManager DeferredMessageManager { get; private set; }
+
+        // This erroneously tries to simplify these method references but the docs do not pick it up correctly
+        // because they try to resolve it on the field rather than the class of the same name.
+#pragma warning disable IDE0001
+        /// <summary>
+        /// Provides access to the various <see cref="SendTo"/> targets at runtime, as well as
+        /// runtime-bound targets like <see cref="Unity.Netcode.RpcTarget.Single"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Group(NativeArray{ulong})"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Group(NativeList{ulong})"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Group(ulong[])"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Group{T}(T)"/>, <see cref="Unity.Netcode.RpcTarget.Not(ulong)"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Not(NativeArray{ulong})"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Not(NativeList{ulong})"/>,
+        /// <see cref="Unity.Netcode.RpcTarget.Not(ulong[])"/>, and
+        /// <see cref="Unity.Netcode.RpcTarget.Not{T}(T)"/>
+        /// </summary>
+#pragma warning restore IDE0001
+        public RpcTarget RpcTarget;
 
         /// <summary>
         /// Gets the CustomMessagingManager for this NetworkManager
@@ -664,6 +780,12 @@ namespace Unity.Netcode
 
         internal void Initialize(bool server)
         {
+            // Make sure the ServerShutdownState is reset when initializing
+            if (server)
+            {
+                ServerShutdownState = ServerShutdownStates.None;
+            }
+
             // Don't allow the user to start a network session if the NetworkManager is
             // still parented under another GameObject
             if (NetworkManagerCheckForParent(true))
@@ -728,6 +850,8 @@ namespace Unity.Netcode
             SpawnManager = new NetworkSpawnManager(this);
 
             DeferredMessageManager = ComponentFactory.Create<IDeferredNetworkMessageManager>(this);
+
+            RpcTarget = new RpcTarget(this);
 
             CustomMessagingManager = new CustomMessagingManager(this);
 
@@ -929,6 +1053,7 @@ namespace Unity.Netcode
         {
             LocalClientId = ServerClientId;
             NetworkMetrics.SetConnectionId(LocalClientId);
+            MessageManager.SetLocalClientId(LocalClientId);
 
             if (NetworkConfig.ConnectionApproval && ConnectionApprovalCallback != null)
             {
@@ -1007,11 +1132,6 @@ namespace Unity.Netcode
                     MessageManager.StopProcessing = discardMessageQueue;
                 }
             }
-
-            if (NetworkConfig != null && NetworkConfig.NetworkTransport != null)
-            {
-                NetworkConfig.NetworkTransport.OnTransportEvent -= ConnectionManager.HandleNetworkEvent;
-            }
         }
 
         // Ensures that the NetworkManager is cleaned up before OnDestroy is run on NetworkObjects and NetworkBehaviours when unloading a scene with a NetworkManager
@@ -1035,6 +1155,9 @@ namespace Unity.Netcode
             // Everything is shutdown in the order of their dependencies
             DeferredMessageManager?.CleanupAllTriggers();
             CustomMessagingManager = null;
+
+            RpcTarget?.Dispose();
+            RpcTarget = null;
 
             BehaviourUpdater?.Shutdown();
             BehaviourUpdater = null;

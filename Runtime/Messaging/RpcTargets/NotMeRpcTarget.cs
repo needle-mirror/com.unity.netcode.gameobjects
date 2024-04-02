@@ -49,11 +49,18 @@ namespace Unity.Netcode
                     {
                         continue;
                     }
+                    // In distributed authority mode, we send to target id 0 (which would be a DAHost) via the group
+                    if (clientId == NetworkManager.ServerClientId && !m_NetworkManager.DistributedAuthorityMode)
+                    {
+                        continue;
+                    }
                     m_GroupSendTarget.Add(clientId);
                 }
             }
             m_GroupSendTarget.Target.Send(behaviour, ref message, delivery, rpcParams);
-            if (!behaviour.IsServer)
+
+            // In distributed authority mode, we don't use ServerRpc
+            if (!behaviour.IsServer && !m_NetworkManager.DistributedAuthorityMode)
             {
                 m_ServerRpcTarget.Send(behaviour, ref message, delivery, rpcParams);
             }

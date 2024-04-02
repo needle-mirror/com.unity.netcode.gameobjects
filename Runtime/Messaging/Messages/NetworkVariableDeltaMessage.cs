@@ -23,6 +23,8 @@ namespace Unity.Netcode
 
         private FastBufferReader m_ReceivedNetworkVariableData;
 
+        // DANGO-TODO: Made some modifications here that overlap/won't play nice with EnsureNetworkVariableLenghtSafety.
+        // Worth either merging or more cleanly separating these codepaths.
         public void Serialize(FastBufferWriter writer, int targetVersion)
         {
             if (!writer.TryBeginWrite(FastBufferWriter.GetWriteSize(NetworkObjectId) + FastBufferWriter.GetWriteSize(NetworkBehaviourIndex)))
@@ -30,15 +32,26 @@ namespace Unity.Netcode
                 throw new OverflowException($"Not enough space in the buffer to write {nameof(NetworkVariableDeltaMessage)}");
             }
 
+            var obj = NetworkBehaviour.NetworkObject;
+            var networkManager = obj.NetworkManagerOwner;
+
             BytePacker.WriteValueBitPacked(writer, NetworkObjectId);
             BytePacker.WriteValueBitPacked(writer, NetworkBehaviourIndex);
+            if (networkManager.DistributedAuthorityMode)
+            {
+                writer.WriteValueSafe((ushort)NetworkBehaviour.NetworkVariableFields.Count);
+            }
 
             for (int i = 0; i < NetworkBehaviour.NetworkVariableFields.Count; i++)
             {
                 if (!DeliveryMappedNetworkVariableIndex.Contains(i))
                 {
                     // This var does not belong to the currently iterating delivery group.
-                    if (NetworkBehaviour.NetworkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
+                    if (networkManager.DistributedAuthorityMode)
+                    {
+                        writer.WriteValueSafe<ushort>(0);
+                    }
+                    else if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
                     {
                         BytePacker.WriteValueBitPacked(writer, (ushort)0);
                     }
@@ -54,7 +67,7 @@ namespace Unity.Netcode
                 var networkVariable = NetworkBehaviour.NetworkVariableFields[i];
                 var shouldWrite = networkVariable.IsDirty() &&
                     networkVariable.CanClientRead(TargetClientId) &&
-                    (NetworkBehaviour.NetworkManager.IsServer || networkVariable.CanClientWrite(NetworkBehaviour.NetworkManager.LocalClientId));
+                    (networkManager.IsServer || networkVariable.CanClientWrite(networkManager.LocalClientId));
 
                 // Prevent the server from writing to the client that owns a given NetworkVariable
                 // Allowing the write would send an old value to the client and cause jitter
@@ -67,14 +80,21 @@ namespace Unity.Netcode
                 // The object containing the behaviour we're about to process is about to be shown to this client
                 // As a result, the client will get the fully serialized NetworkVariable and would be confused by
                 // an extraneous delta
-                if (NetworkBehaviour.NetworkManager.SpawnManager.ObjectsToShowToClient.ContainsKey(TargetClientId) &&
-                    NetworkBehaviour.NetworkManager.SpawnManager.ObjectsToShowToClient[TargetClientId]
-                    .Contains(NetworkBehaviour.NetworkObject))
+                if (networkManager.SpawnManager.ObjectsToShowToClient.ContainsKey(TargetClientId) &&
+                    networkManager.SpawnManager.ObjectsToShowToClient[TargetClientId]
+                    .Contains(obj))
                 {
                     shouldWrite = false;
                 }
 
-                if (NetworkBehaviour.NetworkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
+                if (networkManager.DistributedAuthorityMode)
+                {
+                    if (!shouldWrite)
+                    {
+                        writer.WriteValueSafe<ushort>(0);
+                    }
+                }
+                else if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
                 {
                     if (!shouldWrite)
                     {
@@ -88,9 +108,9 @@ namespace Unity.Netcode
 
                 if (shouldWrite)
                 {
-                    if (NetworkBehaviour.NetworkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
+                    if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
                     {
-                        var tempWriter = new FastBufferWriter(NetworkBehaviour.NetworkManager.MessageManager.NonFragmentedMessageMaxSize, Allocator.Temp, NetworkBehaviour.NetworkManager.MessageManager.FragmentedMessageMaxSize);
+                        var tempWriter = new FastBufferWriter(networkManager.MessageManager.NonFragmentedMessageMaxSize, Allocator.Temp, networkManager.MessageManager.FragmentedMessageMaxSize);
                         NetworkBehaviour.NetworkVariableFields[i].WriteDelta(tempWriter);
                         BytePacker.WriteValueBitPacked(writer, tempWriter.Length);
 
@@ -103,11 +123,30 @@ namespace Unity.Netcode
                     }
                     else
                     {
-                        networkVariable.WriteDelta(writer);
+                        // DANGO-TODO:
+                        // Complex types with custom type serialization (either registered custom types or INetworkSerializable implementations) will be problematic
+                        // Non-complex types always provide a full state update per delta
+                        // DANGO-TODO: Add NetworkListEvent<T>.EventType awareness to the cloud-state server
+                        if (networkManager.DistributedAuthorityMode)
+                        {
+                            var size_marker = writer.Position;
+                            writer.WriteValueSafe<ushort>(0);
+                            var start_marker = writer.Position;
+                            networkVariable.WriteDelta(writer);
+                            var end_marker = writer.Position;
+                            writer.Seek(size_marker);
+                            var size = end_marker - start_marker;
+                            writer.WriteValueSafe((ushort)size);
+                            writer.Seek(end_marker);
+                        }
+                        else
+                        {
+                            networkVariable.WriteDelta(writer);
+                        }
                     }
-                    NetworkBehaviour.NetworkManager.NetworkMetrics.TrackNetworkVariableDeltaSent(
+                    networkManager.NetworkMetrics.TrackNetworkVariableDeltaSent(
                         TargetClientId,
-                        NetworkBehaviour.NetworkObject,
+                        obj,
                         networkVariable.Name,
                         NetworkBehaviour.__getTypeName(),
                         writer.Length - startingSize);
@@ -125,6 +164,8 @@ namespace Unity.Netcode
             return true;
         }
 
+        // DANGO-TODO: Made some modifications here that overlap/won't play nice with EnsureNetworkVariableLenghtSafety.
+        // Worth either merging or more cleanly separating these codepaths.
         public void Handle(ref NetworkContext context)
         {
             var networkManager = (NetworkManager)context.SystemOwner;
@@ -142,10 +183,29 @@ namespace Unity.Netcode
                 }
                 else
                 {
+                    if (networkManager.DistributedAuthorityMode)
+                    {
+                        m_ReceivedNetworkVariableData.ReadValueSafe(out ushort variableCount);
+                        if (variableCount != networkBehaviour.NetworkVariableFields.Count)
+                        {
+                            UnityEngine.Debug.LogError("Variable count mismatch");
+                        }
+                    }
+
                     for (int i = 0; i < networkBehaviour.NetworkVariableFields.Count; i++)
                     {
                         int varSize = 0;
-                        if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
+                        if (networkManager.DistributedAuthorityMode)
+                        {
+                            m_ReceivedNetworkVariableData.ReadValueSafe(out ushort variableSize);
+                            varSize = variableSize;
+
+                            if (varSize == 0)
+                            {
+                                continue;
+                            }
+                        }
+                        else if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
                         {
                             ByteUnpacker.ReadValueBitPacked(m_ReceivedNetworkVariableData, out varSize);
 
@@ -197,6 +257,7 @@ namespace Unity.Netcode
                         }
                         int readStartPos = m_ReceivedNetworkVariableData.Position;
 
+                        // Read Delta so we also notify any subscribers to a change in the NetworkVariable
                         networkVariable.ReadDelta(m_ReceivedNetworkVariableData, networkManager.IsServer);
 
                         networkManager.NetworkMetrics.TrackNetworkVariableDeltaReceived(
@@ -206,7 +267,7 @@ namespace Unity.Netcode
                             networkBehaviour.__getTypeName(),
                             context.MessageSize);
 
-                        if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety)
+                        if (networkManager.NetworkConfig.EnsureNetworkVariableLengthSafety || networkManager.DistributedAuthorityMode)
                         {
                             if (m_ReceivedNetworkVariableData.Position > (readStartPos + varSize))
                             {
@@ -232,7 +293,10 @@ namespace Unity.Netcode
             }
             else
             {
-                networkManager.DeferredMessageManager.DeferMessage(IDeferredNetworkMessageManager.TriggerType.OnSpawn, NetworkObjectId, m_ReceivedNetworkVariableData, ref context);
+                // DANGO-TODO: Fix me!
+                // When a client-spawned NetworkObject is despawned by the owner client, the owner client will still get messages for deltas and cause this to
+                // log a warning. The issue is primarily how NetworkVariables handle updating and will require some additional re-factoring.
+                networkManager.DeferredMessageManager.DeferMessage(IDeferredNetworkMessageManager.TriggerType.OnSpawn, NetworkObjectId, m_ReceivedNetworkVariableData, ref context, GetType().Name);
             }
         }
     }

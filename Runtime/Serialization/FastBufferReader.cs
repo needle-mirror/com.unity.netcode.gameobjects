@@ -245,6 +245,11 @@ namespace Unity.Netcode
         /// </summary>
         public unsafe void Dispose()
         {
+            if (Handle == null)
+            {
+                return;
+            }
+
             UnsafeUtility.Free(Handle, Handle->Allocator);
             Handle = null;
         }
@@ -1067,6 +1072,36 @@ namespace Unity.Netcode
             else
             {
                 ReadUnmanagedSafeInPlace(ref value);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void ReadValueSafeInPlace<T>(ref NativeHashSet<T> value) where T : unmanaged, IEquatable<T>
+        {
+            ReadUnmanagedSafe(out int length);
+            value.Clear();
+            for (var i = 0; i < length; ++i)
+            {
+                T val = default;
+                NetworkVariableSerialization<T>.Read(this, ref val);
+                value.Add(val);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void ReadValueSafeInPlace<TKey, TVal>(ref NativeHashMap<TKey, TVal> value)
+            where TKey : unmanaged, IEquatable<TKey>
+            where TVal : unmanaged
+        {
+            ReadUnmanagedSafe(out int length);
+            value.Clear();
+            for (var i = 0; i < length; ++i)
+            {
+                TKey key = default;
+                TVal val = default;
+                NetworkVariableSerialization<TKey>.Read(this, ref key);
+                NetworkVariableSerialization<TVal>.Read(this, ref val);
+                value[key] = val;
             }
         }
 #endif

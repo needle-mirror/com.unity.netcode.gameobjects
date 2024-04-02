@@ -21,6 +21,7 @@ namespace Unity.Netcode
         /// The callback to be invoked when the value gets changed
         /// </summary>
         public OnValueChangedDelegate OnValueChanged;
+        internal override NetworkVariableType Type => NetworkVariableType.Value;
 
         /// <summary>
         /// Constructor for <see cref="NetworkVariable{T}"/>
@@ -41,6 +42,19 @@ namespace Unity.Netcode
             // it in the constructor might not give users enough time to set the
             // DuplicateValue callback if they're using UserNetworkVariableSerialization
             m_PreviousValue = default;
+        }
+
+        /// <summary>
+        /// Resets the NetworkVariable when the associated NetworkObject is not spawned
+        /// </summary>
+        /// <param name="value">the value to reset the NetworkVariable to (if none specified it resets to the default)</param>
+        public void Reset(T value = default)
+        {
+            if (m_NetworkBehaviour == null || m_NetworkBehaviour != null && !m_NetworkBehaviour.NetworkObject.IsSpawned)
+            {
+                m_InternalValue = value;
+                m_PreviousValue = default;
+            }
         }
 
         /// <summary>
@@ -68,9 +82,9 @@ namespace Unity.Netcode
                     return;
                 }
 
-                if (m_NetworkBehaviour && !CanClientWrite(m_NetworkBehaviour.NetworkManager.LocalClientId))
+                if (m_NetworkManager && !CanClientWrite(m_NetworkManager.LocalClientId))
                 {
-                    throw new InvalidOperationException("Client is not allowed to write to this NetworkVariable");
+                    throw new InvalidOperationException($"[Client-{m_NetworkManager.LocalClientId}][{m_NetworkBehaviour.name}][{Name}] Write permissions ({WritePerm}) for this client instance is not allowed!");
                 }
 
                 Set(value);
@@ -104,6 +118,8 @@ namespace Unity.Netcode
             }
 
             m_PreviousValue = default;
+
+            base.Dispose();
         }
 
         ~NetworkVariable()
@@ -142,16 +158,16 @@ namespace Unity.Netcode
         /// </summary>
         public override void ResetDirty()
         {
-            base.ResetDirty();
             // Resetting the dirty value declares that the current value is not dirty
             // Therefore, we set the m_PreviousValue field to a duplicate of the current
             // field, so that our next dirty check is made against the current "not dirty"
             // value.
-            if (!m_HasPreviousValue || !NetworkVariableSerialization<T>.AreEqual(ref m_InternalValue, ref m_PreviousValue))
+            if (IsDirty())
             {
                 m_HasPreviousValue = true;
                 NetworkVariableSerialization<T>.Duplicate(m_InternalValue, ref m_PreviousValue);
             }
+            base.ResetDirty();
         }
 
         /// <summary>
@@ -173,7 +189,7 @@ namespace Unity.Netcode
         /// <param name="writer">The stream to write the value to</param>
         public override void WriteDelta(FastBufferWriter writer)
         {
-            WriteField(writer);
+            NetworkVariableSerialization<T>.WriteDelta(writer, ref m_InternalValue, ref m_PreviousValue);
         }
 
         /// <summary>
@@ -189,7 +205,7 @@ namespace Unity.Netcode
             // would be stored in different fields
 
             T previousValue = m_InternalValue;
-            NetworkVariableSerialization<T>.Read(reader, ref m_InternalValue);
+            NetworkVariableSerialization<T>.ReadDelta(reader, ref m_InternalValue);
 
             if (keepDirtyDelta)
             {

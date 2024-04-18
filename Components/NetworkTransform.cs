@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -1330,9 +1329,6 @@ namespace Unity.Netcode.Components
         private Quaternion m_CurrentRotation;
         private Vector3 m_TargetRotation;
 
-        // Used to for each instance to uniquely identify the named message
-        private string m_MessageName;
-
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void UpdatePositionInterpolator(Vector3 position, double time, bool resetInterpolator = false)
@@ -1428,6 +1424,7 @@ namespace Unity.Netcode.Components
         /// <param name="targetClientId">the clientId being synchronized (both reading and writing)</param>
         protected override void OnSynchronize<T>(ref BufferSerializer<T> serializer)
         {
+            m_CachedNetworkManager = NetworkManager;
             var targetClientId = m_TargetIdBeingSynchronized;
             var synchronizationState = new NetworkTransformState()
             {
@@ -2051,10 +2048,15 @@ namespace Unity.Netcode.Components
             return isDirty;
         }
 
+        protected virtual void OnTransformUpdated()
+        {
+
+        }
+
         /// <summary>
         /// Applies the authoritative state to the transform
         /// </summary>
-        private void ApplyAuthoritativeState()
+        protected internal void ApplyAuthoritativeState()
         {
             var networkState = m_LocalAuthoritativeNetworkState;
             // The m_CurrentPosition, m_CurrentRotation, and m_CurrentScale values are continually updated
@@ -2225,6 +2227,7 @@ namespace Unity.Netcode.Components
                 }
                 transform.localScale = m_CurrentScale;
             }
+            OnTransformUpdated();
         }
 
         /// <summary>
@@ -2422,6 +2425,7 @@ namespace Unity.Netcode.Components
             {
                 AddLogEntry(ref newState, NetworkObject.OwnerClientId);
             }
+            OnTransformUpdated();
         }
 
         /// <summary>
@@ -2590,6 +2594,11 @@ namespace Unity.Netcode.Components
 
         }
 
+        protected virtual void OnBeforeUpdateTransformState()
+        {
+
+        }
+
         private NetworkTransformState m_OldState = new NetworkTransformState();
 
         /// <summary>
@@ -2612,6 +2621,8 @@ namespace Unity.Netcode.Components
 
             // Get the time when this new state was sent
             newState.SentTime = new NetworkTime(m_CachedNetworkManager.NetworkConfig.TickRate, newState.NetworkTick).Time;
+
+            OnBeforeUpdateTransformState();
 
             // Apply the new state
             ApplyUpdatedState(newState);
@@ -2753,21 +2764,17 @@ namespace Unity.Netcode.Components
             // Started using this again to avoid the getter processing cost of NetworkBehaviour.NetworkManager
             m_CachedNetworkManager = NetworkManager;
 
-            // Register a custom named message specifically for this instance
-            m_MessageName = $"NTU_{NetworkObjectId}_{NetworkBehaviourId}";
-            m_CachedNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(m_MessageName, TransformStateUpdate);
             Initialize();
+
+            if (CanCommitToTransform && UseHalfFloatPrecision)
+            {
+                SetState(GetSpaceRelativePosition(), GetSpaceRelativeRotation(), GetScale(), false);
+            }
         }
 
         /// <inheritdoc/>
         public override void OnNetworkDespawn()
         {
-            // During destroy, use NetworkBehaviour.NetworkManager as opposed to m_CachedNetworkManager
-            if (!NetworkManager.ShutdownInProgress && NetworkManager.CustomMessagingManager != null)
-            {
-                NetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(m_MessageName);
-            }
-
             DeregisterForTickUpdate(this);
 
             CanCommitToTransform = false;
@@ -3156,79 +3163,23 @@ namespace Unity.Netcode.Components
         }
 
         /// <summary>
-        /// Receives the <see cref="NetworkTransformState"/> named message updates
+        /// Invoked by <see cref="NetworkTransformMessage"/> to update the transform state
         /// </summary>
-        /// <param name="senderId">authority of the transform</param>
-        /// <param name="messagePayload">serialzied <see cref="NetworkTransformState"/></param>
-        private void TransformStateUpdate(ulong senderId, FastBufferReader messagePayload)
+        /// <param name="networkTransformState"></param>
+        internal void TransformStateUpdate(ref NetworkTransformState networkTransformState)
         {
-            var ownerAuthoritativeServerSide = !OnIsServerAuthoritative() && IsServer;
-            if (ownerAuthoritativeServerSide && OwnerClientId == NetworkManager.ServerClientId)
-            {
-                // Ownership must have changed, ignore any additional pending messages that might have
-                // come from a previous owner client.
-                return;
-            }
-
             // Store the previous/old state
             m_OldState = m_LocalAuthoritativeNetworkState;
 
-            // Save the current payload stream position
-            var currentPosition = messagePayload.Position;
+            // Assign the new incoming state
+            m_LocalAuthoritativeNetworkState = networkTransformState;
 
-            // Deserialize the message (and determine network delivery)
-            messagePayload.ReadNetworkSerializableInPlace(ref m_LocalAuthoritativeNetworkState);
-
-            // Rewind back prior to serialization
-            messagePayload.Seek(currentPosition);
-
-            // Get the network delivery method used to send this state update
-            var networkDelivery = m_LocalAuthoritativeNetworkState.ReliableSequenced ? NetworkDelivery.ReliableSequenced : NetworkDelivery.UnreliableSequenced;
-
-            // Forward owner authoritative messages before doing anything else
-            if (ownerAuthoritativeServerSide)
-            {
-                // Forward the state update if there are any remote clients to foward it to
-                if (m_CachedNetworkManager.ConnectionManager.ConnectedClientsList.Count > (IsHost ? 2 : 1))
-                {
-                    ForwardStateUpdateMessage(messagePayload, networkDelivery);
-                }
-            }
-
-            // Apply the message
+            // Apply the state update
             OnNetworkStateChanged(m_OldState, m_LocalAuthoritativeNetworkState);
         }
 
         /// <summary>
-        /// Forwards owner authoritative state updates when received by the server
-        /// </summary>
-        /// <param name="messagePayload">the owner state message payload</param>
-        private unsafe void ForwardStateUpdateMessage(FastBufferReader messagePayload, NetworkDelivery networkDelivery)
-        {
-            var serverAuthoritative = OnIsServerAuthoritative();
-            var currentPosition = messagePayload.Position;
-            var messageSize = messagePayload.Length - currentPosition;
-            var writer = new FastBufferWriter(messageSize, Allocator.Temp);
-            using (writer)
-            {
-                writer.WriteBytesSafe(messagePayload.GetUnsafePtr(), messageSize, currentPosition);
-
-                var clientCount = m_CachedNetworkManager.ConnectionManager.ConnectedClientsList.Count;
-                for (int i = 0; i < clientCount; i++)
-                {
-                    var clientId = m_CachedNetworkManager.ConnectionManager.ConnectedClientsList[i].ClientId;
-                    if (NetworkManager.ServerClientId == clientId || (!serverAuthoritative && clientId == OwnerClientId))
-                    {
-                        continue;
-                    }
-                    m_CachedNetworkManager.CustomMessagingManager.SendNamedMessage(m_MessageName, clientId, writer, networkDelivery);
-                }
-            }
-            messagePayload.Seek(currentPosition);
-        }
-
-        /// <summary>
-        /// Sends <see cref="NetworkTransformState"/> named message updates by the authority of the transform
+        /// Invoked by the authoritative instance to sends a <see cref="NetworkTransformMessage"/> containing the <see cref="NetworkTransformState"/>
         /// </summary>
         private void UpdateTransformState()
         {
@@ -3248,7 +3199,12 @@ namespace Unity.Netcode.Components
             }
             var customMessageManager = m_CachedNetworkManager.CustomMessagingManager;
 
-            var writer = new FastBufferWriter(128, Allocator.Temp);
+            var networkTransformMessage = new NetworkTransformMessage()
+            {
+                NetworkObjectId = NetworkObjectId,
+                NetworkBehaviourId = NetworkBehaviourId,
+                State = m_LocalAuthoritativeNetworkState
+            };
 
             // Determine what network delivery method to use:
             // When to send reliable packets:
@@ -3259,32 +3215,32 @@ namespace Unity.Netcode.Components
                 | m_LocalAuthoritativeNetworkState.UnreliableFrameSync | m_LocalAuthoritativeNetworkState.SynchronizeBaseHalfFloat
                 ? NetworkDelivery.ReliableSequenced : NetworkDelivery.UnreliableSequenced;
 
-            using (writer)
+            // Server-host always sends updates to all clients (but itself)
+            if (IsServer)
             {
-                writer.WriteNetworkSerializable(m_LocalAuthoritativeNetworkState);
-                // Server-host always sends updates to all clients (but itself)
-                if (IsServer)
+                var clientCount = m_CachedNetworkManager.ConnectionManager.ConnectedClientsList.Count;
+                for (int i = 0; i < clientCount; i++)
                 {
-                    var clientCount = m_CachedNetworkManager.ConnectionManager.ConnectedClientsList.Count;
-                    for (int i = 0; i < clientCount; i++)
+                    var clientId = m_CachedNetworkManager.ConnectionManager.ConnectedClientsList[i].ClientId;
+                    if (NetworkManager.ServerClientId == clientId)
                     {
-                        var clientId = m_CachedNetworkManager.ConnectionManager.ConnectedClientsList[i].ClientId;
-                        if (NetworkManager.ServerClientId == clientId)
-                        {
-                            continue;
-                        }
-                        customMessageManager.SendNamedMessage(m_MessageName, clientId, writer, networkDelivery);
+                        continue;
                     }
+                    if (!NetworkObject.Observers.Contains(clientId))
+                    {
+                        continue;
+                    }
+                    NetworkManager.MessageManager.SendMessage(ref networkTransformMessage, networkDelivery, clientId);
                 }
-                else
-                {
-                    // Clients (owner authoritative) send messages to the server-host
-                    customMessageManager.SendNamedMessage(m_MessageName, NetworkManager.ServerClientId, writer, networkDelivery);
-                }
+            }
+            else
+            {
+                // Clients (owner authoritative) send messages to the server-host
+                NetworkManager.MessageManager.SendMessage(ref networkTransformMessage, networkDelivery, NetworkManager.ServerClientId);
             }
         }
 
-
+        #region Network Tick Registration and Handling
         private static Dictionary<NetworkManager, NetworkTransformTickRegistration> s_NetworkTickRegistration = new Dictionary<NetworkManager, NetworkTransformTickRegistration>();
 
         private static void RemoveTickUpdate(NetworkManager networkManager)
@@ -3379,7 +3335,7 @@ namespace Unity.Netcode.Components
 
         /// <summary>
         /// If a NetworkTransformTickRegistration exists for the NetworkManager instance, then this will
-        /// remove the NetworkTransform instance from the single tick update entry point. 
+        /// remove the NetworkTransform instance from the single tick update entry point.
         /// </summary>
         /// <param name="networkTransform"></param>
         private static void DeregisterForTickUpdate(NetworkTransform networkTransform)
@@ -3394,6 +3350,8 @@ namespace Unity.Netcode.Components
                 }
             }
         }
+
+        #endregion
     }
 
     internal interface INetworkTransformLogStateEntry

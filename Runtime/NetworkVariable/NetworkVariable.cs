@@ -22,6 +22,28 @@ namespace Unity.Netcode
         /// </summary>
         public OnValueChangedDelegate OnValueChanged;
 
+        public delegate bool CheckExceedsDirtinessThresholdDelegate(in T previousValue, in T newValue);
+
+        public CheckExceedsDirtinessThresholdDelegate CheckExceedsDirtinessThreshold;
+
+        public override bool ExceedsDirtinessThreshold()
+        {
+            if (CheckExceedsDirtinessThreshold != null && m_HasPreviousValue)
+            {
+                return CheckExceedsDirtinessThreshold(m_PreviousValue, m_InternalValue);
+            }
+
+            return true;
+        }
+
+        public override void OnInitialize()
+        {
+            base.OnInitialize();
+
+            m_HasPreviousValue = true;
+            NetworkVariableSerialization<T>.Duplicate(m_InternalValue, ref m_PreviousValue);
+        }
+
         /// <summary>
         /// Constructor for <see cref="NetworkVariable{T}"/>
         /// </summary>
@@ -142,16 +164,16 @@ namespace Unity.Netcode
         /// </summary>
         public override void ResetDirty()
         {
-            base.ResetDirty();
             // Resetting the dirty value declares that the current value is not dirty
             // Therefore, we set the m_PreviousValue field to a duplicate of the current
             // field, so that our next dirty check is made against the current "not dirty"
             // value.
-            if (!m_HasPreviousValue || !NetworkVariableSerialization<T>.AreEqual(ref m_InternalValue, ref m_PreviousValue))
+            if (IsDirty())
             {
                 m_HasPreviousValue = true;
                 NetworkVariableSerialization<T>.Duplicate(m_InternalValue, ref m_PreviousValue);
             }
+            base.ResetDirty();
         }
 
         /// <summary>
@@ -173,7 +195,7 @@ namespace Unity.Netcode
         /// <param name="writer">The stream to write the value to</param>
         public override void WriteDelta(FastBufferWriter writer)
         {
-            WriteField(writer);
+            NetworkVariableSerialization<T>.WriteDelta(writer, ref m_InternalValue, ref m_PreviousValue);
         }
 
         /// <summary>
@@ -189,7 +211,7 @@ namespace Unity.Netcode
             // would be stored in different fields
 
             T previousValue = m_InternalValue;
-            NetworkVariableSerialization<T>.Read(reader, ref m_InternalValue);
+            NetworkVariableSerialization<T>.ReadDelta(reader, ref m_InternalValue);
 
             if (keepDirtyDelta)
             {

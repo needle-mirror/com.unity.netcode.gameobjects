@@ -6,12 +6,12 @@ using UnityEngine.TestTools;
 
 namespace Unity.Netcode.RuntimeTests
 {
-    public class NetworkListChangedTestComponent : NetworkBehaviour
+    internal class NetworkListChangedTestComponent : NetworkBehaviour
     {
 
     }
 
-    public class ListChangedObject : NetworkBehaviour
+    internal class ListChangedObject : NetworkBehaviour
     {
         public int ExpectedPreviousValue = 0;
         public int ExpectedValue = 0;
@@ -46,9 +46,9 @@ namespace Unity.Netcode.RuntimeTests
         }
     }
 
-    [TestFixture(SessionModeTypes.DistributedAuthority)]
-    [TestFixture(SessionModeTypes.ClientServer)]
-    public class NetworkListChangedTests : NetcodeIntegrationTest
+    [TestFixture(NetworkTopologyTypes.DistributedAuthority)]
+    [TestFixture(NetworkTopologyTypes.ClientServer)]
+    internal class NetworkListChangedTests : NetcodeIntegrationTest
     {
         protected override int NumberOfClients => 2;
 
@@ -57,7 +57,7 @@ namespace Unity.Netcode.RuntimeTests
 
         private NetworkObject m_NetSpawnedObject1;
 
-        public NetworkListChangedTests(SessionModeTypes sessionModeType) : base(sessionModeType) { }
+        public NetworkListChangedTests(NetworkTopologyTypes networkTopologyType) : base(networkTopologyType) { }
 
         protected override void OnServerAndClientsCreated()
         {

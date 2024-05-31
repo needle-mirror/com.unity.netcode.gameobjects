@@ -7,9 +7,9 @@ using UnityEngine.TestTools;
 
 namespace Unity.Netcode.RuntimeTests
 {
-    [TestFixture(SessionModeTypes.DistributedAuthority)]
-    [TestFixture(SessionModeTypes.ClientServer)]
-    public class NetworkObjectOnSpawnTests : NetcodeIntegrationTest
+    [TestFixture(NetworkTopologyTypes.DistributedAuthority)]
+    [TestFixture(NetworkTopologyTypes.ClientServer)]
+    internal class NetworkObjectOnSpawnTests : NetcodeIntegrationTest
     {
         private GameObject m_TestNetworkObjectPrefab;
         private GameObject m_TestNetworkObjectInstance;
@@ -29,7 +29,7 @@ namespace Unity.Netcode.RuntimeTests
         private const string k_WithObserversError = "Not all clients spawned the";
         private const string k_WithoutObserversError = "A client spawned the";
 
-        public NetworkObjectOnSpawnTests(SessionModeTypes sessionModeType) : base(sessionModeType) { }
+        public NetworkObjectOnSpawnTests(NetworkTopologyTypes networkTopologyType) : base(networkTopologyType) { }
 
         protected override void OnServerAndClientsCreated()
         {
@@ -43,7 +43,7 @@ namespace Unity.Netcode.RuntimeTests
             {
                 if (m_ObserverTestType == ObserverTestTypes.WithObservers)
                 {
-                    // When validating this portion of the test and spawning with observers is true, there 
+                    // When validating this portion of the test and spawning with observers is true, there
                     // should be spawned objects on the clients.
                     if (!s_GlobalNetworkObjects.ContainsKey(client.LocalClientId))
                     {
@@ -52,7 +52,7 @@ namespace Unity.Netcode.RuntimeTests
                 }
                 else
                 {
-                    // When validating this portion of the test and spawning with observers is false, there 
+                    // When validating this portion of the test and spawning with observers is false, there
                     // should be no spawned objects on the clients.
                     if (s_GlobalNetworkObjects.ContainsKey(client.LocalClientId))
                     {

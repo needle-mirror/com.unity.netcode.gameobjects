@@ -8,9 +8,9 @@ using UnityEngine.TestTools;
 
 namespace Unity.Netcode.RuntimeTests
 {
-    [TestFixture(SessionModeTypes.DistributedAuthority)]
-    [TestFixture(SessionModeTypes.ClientServer)]
-    public class NetworkObjectOwnershipPropertiesTests : NetcodeIntegrationTest
+    [TestFixture(NetworkTopologyTypes.DistributedAuthority)]
+    [TestFixture(NetworkTopologyTypes.ClientServer)]
+    internal class NetworkObjectOwnershipPropertiesTests : NetcodeIntegrationTest
     {
         private class DummyNetworkBehaviour : NetworkBehaviour
         {
@@ -30,7 +30,7 @@ namespace Unity.Netcode.RuntimeTests
         private bool m_InitialOwnerOwnedBySever;
         private bool m_TargetOwnerOwnedBySever;
 
-        public NetworkObjectOwnershipPropertiesTests(SessionModeTypes sessionModeType) : base(sessionModeType) { }
+        public NetworkObjectOwnershipPropertiesTests(NetworkTopologyTypes networkTopologyType) : base(networkTopologyType) { }
 
         protected override IEnumerator OnTearDown()
         {
@@ -186,7 +186,7 @@ namespace Unity.Netcode.RuntimeTests
                 yield return WaitForMessageReceived<ChangeOwnershipMessage>(m_ClientNetworkManagers.ToList());
             }
 
-            // Ensure it's the ownership tables are updated 
+            // Ensure it's the ownership tables are updated
             yield return WaitForConditionOrTimeOut(OwnershipPropagated);
             AssertOnTimeout($"Timed out waiting for ownership to propagate!\n{m_OwnershipPropagatedFailures}");
 

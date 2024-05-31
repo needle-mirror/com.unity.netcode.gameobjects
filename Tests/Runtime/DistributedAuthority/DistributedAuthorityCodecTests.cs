@@ -16,15 +16,15 @@ using UnityEngine.TestTools;
 
 namespace Unity.Netcode.RuntimeTests
 {
-    public class DistributedAuthorityCodecTests : NetcodeIntegrationTest
+    internal class DistributedAuthorityCodecTests : NetcodeIntegrationTest
     {
         protected override int NumberOfClients => 1;
 
         // Use the CMB Service for all tests
         protected override bool UseCMBService() => true;
 
-        // Set the session mode to distributed authority for all tests
-        protected override SessionModeTypes OnGetSessionmode() => SessionModeTypes.DistributedAuthority;
+        // Set the network topology to distributed authority for all tests
+        protected override NetworkTopologyTypes OnGetNetworkTopologyType() => NetworkTopologyTypes.DistributedAuthority;
 
         private CodecTestHooks m_ClientCodecHook;
         private NetworkManager Client => m_ClientNetworkManagers[0];
@@ -35,7 +35,7 @@ namespace Unity.Netcode.RuntimeTests
 
         private GameObject m_SpawnObject;
 
-        public class TestNetworkComponent : NetworkBehaviour
+        internal class TestNetworkComponent : NetworkBehaviour
         {
             public NetworkList<int> MyNetworkList = new NetworkList<int>(new List<int> { 1, 2, 3 });
 

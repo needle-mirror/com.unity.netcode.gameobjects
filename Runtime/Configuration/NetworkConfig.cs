@@ -149,14 +149,20 @@ namespace Unity.Netcode
         /// </summary>
         public const int RttWindowSize = 64; // number of slots to use for RTT computations (max number of in-flight packets)
 
-        [Tooltip("Determines if the network session will run in client-server or distributed authority mode.")]
-        public SessionModeTypes SessionMode;
+        [Tooltip("Determines whether to use the client-server or distributed authority network topology.")]
+        public NetworkTopologyTypes NetworkTopology;
 
         [HideInInspector]
         public bool UseCMBService;
 
         [Tooltip("When enabled (default), the player prefab will automatically be spawned (client-side) upon the client being approved and synchronized.")]
         public bool AutoSpawnPlayerPrefabClientSide = true;
+
+#if MULTIPLAYER_TOOLS
+        public bool NetworkMessageMetrics = true;
+#endif
+
+        public bool NetworkProfilingMetrics = true;
 
         /// <summary>
         /// Returns a base64 encoded version of the configuration

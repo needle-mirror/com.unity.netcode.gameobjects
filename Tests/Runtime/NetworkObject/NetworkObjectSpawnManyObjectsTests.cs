@@ -7,9 +7,9 @@ using UnityEngine.TestTools;
 namespace Unity.Netcode.RuntimeTests
 {
 
-    [TestFixture(SessionModeTypes.ClientServer)]
-    [TestFixture(SessionModeTypes.DistributedAuthority)]
-    public class NetworkObjectSpawnManyObjectsTests : NetcodeIntegrationTest
+    [TestFixture(NetworkTopologyTypes.ClientServer)]
+    [TestFixture(NetworkTopologyTypes.DistributedAuthority)]
+    internal class NetworkObjectSpawnManyObjectsTests : NetcodeIntegrationTest
     {
         protected override int NumberOfClients => 1;
         // "many" in this case means enough to exceed a ushort_max message size written in the header
@@ -18,9 +18,9 @@ namespace Unity.Netcode.RuntimeTests
 
         private NetworkPrefab m_PrefabToSpawn;
 
-        public NetworkObjectSpawnManyObjectsTests(SessionModeTypes sessionModeType) : base(sessionModeType) { }
+        public NetworkObjectSpawnManyObjectsTests(NetworkTopologyTypes networkTopologyType) : base(networkTopologyType) { }
         // Using this component assures we will know precisely how many prefabs were spawned on the client
-        public class SpawnObjecTrackingComponent : NetworkBehaviour
+        internal class SpawnObjecTrackingComponent : NetworkBehaviour
         {
             public static int SpawnedObjects;
             public override void OnNetworkSpawn()

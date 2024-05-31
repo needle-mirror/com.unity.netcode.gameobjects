@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Unity.Netcode.Components;
 #if UNITY_EDITOR
 using UnityEditor;
 #if UNITY_2021_2_OR_NEWER
@@ -12,6 +13,7 @@ using UnityEditor.Experimental.SceneManagement;
 #endif
 using UnityEngine;
 using UnityEngine.SceneManagement;
+
 
 
 namespace Unity.Netcode
@@ -54,6 +56,34 @@ namespace Unity.Netcode
                 return GlobalObjectIdHash;
             }
         }
+
+        /// <summary>
+        /// All <see cref="NetworkTransform"></see> component instances associated with a <see cref="NetworkObject"/> component instance.
+        /// </summary>
+        /// <remarks>
+        /// When parented, all child <see cref="NetworkTransform"/> component instances under a <see cref="NetworkObject"/> component instance that do not have
+        /// another <see cref="NetworkObject"/> component instance will be associated with the initial component instance. This list does not contain any parented
+        /// children <see cref="NetworkObject"/> instances with one or more <see cref="NetworkTransform"/> component instance(s).
+        /// </remarks>
+        public List<NetworkTransform> NetworkTransforms { get; private set; }
+
+#if COM_UNITY_MODULES_PHYSICS
+        /// <summary>
+        /// All <see cref="NetworkRigidbodyBase"></see> component instances associated with a <see cref="NetworkObject"/> component instance.
+        /// NOTE: This is only available if a physics package is included. If not, then this will not be available!
+        /// </summary>
+        /// <remarks>
+        /// When parented, all child <see cref="NetworkRigidbodyBase"/> component instances under a <see cref="NetworkObject"/> component instance that do not have
+        /// another <see cref="NetworkObject"/> component instance will be associated with the initial component instance. This list does not contain any parented
+        /// child <see cref="NetworkObject"/> instances with one or more <see cref="NetworkTransform"/> component instance(s).
+        /// </remarks>
+        public List<NetworkRigidbodyBase> NetworkRigidbodies { get; private set; }
+#endif
+        /// <summary>
+        /// The current parent <see cref="NetworkObject"/> component instance to this <see cref="NetworkObject"/> component instance. When there is no parent then
+        /// this will be <see cref="null"/>.
+        /// </summary>
+        public NetworkObject CurrentParent { get; private set; }
 
 #if UNITY_EDITOR
         private const string k_GlobalIdTemplate = "GlobalObjectId_V1-{0}-{1}-{2}-{3}";
@@ -398,8 +428,11 @@ namespace Unity.Netcode
 
         /// <summary>
         /// Determines whether a NetworkObject can be distributed to other clients during
-        /// a <see cref="SessionModeTypes.DistributedAuthority"/> session.
+        /// a <see cref="NetworkTopologyTypes.DistributedAuthority"/> session.
         /// </summary>
+#if !MULTIPLAYER_SDK_INSTALLED
+        [HideInInspector]
+#endif
         [SerializeField]
         internal OwnershipStatus Ownership = OwnershipStatus.Distributable;
 
@@ -1894,7 +1927,6 @@ namespace Unity.Netcode
 
         internal bool InternalTrySetParent(NetworkObject parent, bool worldPositionStays = true)
         {
-
             if (parent != null && (IsSpawned ^ parent.IsSpawned))
             {
                 if (NetworkManager != null && !NetworkManager.ShutdownInProgress)
@@ -1907,10 +1939,12 @@ namespace Unity.Netcode
 
             if (parent == null)
             {
+                CurrentParent = null;
                 transform.SetParent(null, worldPositionStays);
             }
             else
             {
+                CurrentParent = parent;
                 transform.SetParent(parent.transform, worldPositionStays);
             }
 
@@ -2209,6 +2243,18 @@ namespace Unity.Netcode
             }
         }
 
+        internal void InvokeBehaviourNetworkPreSpawn()
+        {
+            var networkManager = NetworkManager;
+            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
+            {
+                if (ChildNetworkBehaviours[i].gameObject.activeInHierarchy)
+                {
+                    ChildNetworkBehaviours[i].NetworkPreSpawn(ref networkManager);
+                }
+            }
+        }
+
         internal void InvokeBehaviourNetworkSpawn()
         {
             NetworkManager.SpawnManager.UpdateOwnershipTable(this, OwnerClientId);
@@ -2237,6 +2283,42 @@ namespace Unity.Netcode
                 }
             }
         }
+
+        internal void InvokeBehaviourNetworkPostSpawn()
+        {
+            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
+            {
+                if (ChildNetworkBehaviours[i].gameObject.activeInHierarchy)
+                {
+                    ChildNetworkBehaviours[i].NetworkPostSpawn();
+                }
+            }
+        }
+
+
+        internal void InternalNetworkSessionSynchronized()
+        {
+            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
+            {
+                if (ChildNetworkBehaviours[i].gameObject.activeInHierarchy)
+                {
+                    ChildNetworkBehaviours[i].NetworkSessionSynchronized();
+                }
+            }
+        }
+
+        internal void InternalInSceneNetworkObjectsSpawned()
+        {
+            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
+            {
+                if (ChildNetworkBehaviours[i].gameObject.activeInHierarchy)
+                {
+                    ChildNetworkBehaviours[i].InSceneNetworkObjectsSpawned();
+                }
+            }
+        }
+
+
 
         internal void InvokeBehaviourNetworkDespawn()
         {
@@ -2271,6 +2353,25 @@ namespace Unity.Netcode
                     if (networkBehaviours[i].NetworkObject == this)
                     {
                         m_ChildNetworkBehaviours.Add(networkBehaviours[i]);
+                        var type = networkBehaviours[i].GetType();
+                        if (type.IsInstanceOfType(typeof(NetworkTransform)) || type.IsSubclassOf(typeof(NetworkTransform)))
+                        {
+                            if (NetworkTransforms == null)
+                            {
+                                NetworkTransforms = new List<NetworkTransform>();
+                            }
+                            NetworkTransforms.Add(networkBehaviours[i] as NetworkTransform);
+                        }
+#if COM_UNITY_MODULES_PHYSICS
+                        else if (type.IsSubclassOf(typeof(NetworkRigidbodyBase)))
+                        {
+                            if (NetworkRigidbodies == null)
+                            {
+                                NetworkRigidbodies = new List<NetworkRigidbodyBase>();
+                            }
+                            NetworkRigidbodies.Add(networkBehaviours[i] as NetworkRigidbodyBase);
+                        }
+#endif
                     }
                 }
 
@@ -2862,6 +2963,9 @@ namespace Unity.Netcode
             // in order to be able to determine which NetworkVariables the client will be allowed to read.
             networkObject.OwnerClientId = sceneObject.OwnerClientId;
 
+            // Special Case: Invoke NetworkBehaviour.OnPreSpawn methods here before SynchronizeNetworkBehaviours
+            networkObject.InvokeBehaviourNetworkPreSpawn();
+
             // Synchronize NetworkBehaviours
             var bufferSerializer = new BufferSerializer<BufferSerializerReader>(new BufferSerializerReader(reader));
             networkObject.SynchronizeNetworkBehaviours(ref bufferSerializer, networkManager.LocalClientId);
@@ -3051,6 +3155,11 @@ namespace Unity.Netcode
 
         private void Awake()
         {
+            m_ChildNetworkBehaviours = null;
+            NetworkTransforms?.Clear();
+#if COM_UNITY_MODULES_PHYSICS
+            NetworkRigidbodies?.Clear();
+#endif
             SetCachedParent(transform.parent);
             SceneOrigin = gameObject.scene;
         }

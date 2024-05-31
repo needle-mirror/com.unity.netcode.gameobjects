@@ -7,7 +7,7 @@ namespace Unity.Netcode.RuntimeTests
 {
     [TestFixture(HostOrServer.DAHost)]
     [TestFixture(HostOrServer.Host)]
-    public class NetworkSpawnManagerTests : NetcodeIntegrationTest
+    internal class NetworkSpawnManagerTests : NetcodeIntegrationTest
     {
         private ulong serverSideClientId => NetworkManager.ServerClientId;
         private ulong clientSideClientId => m_ClientNetworkManagers[0].LocalClientId;
@@ -52,7 +52,7 @@ namespace Unity.Netcode.RuntimeTests
         {
             if (m_DistributedAuthority)
             {
-                VerboseDebug($"Ignoring test: Clients have access to other player objects in {m_SessionModeType} mode.");
+                VerboseDebug($"Ignoring test: Clients have access to other player objects in {m_NetworkTopologyType} mode.");
                 return;
             }
             // client can't access server player
@@ -77,7 +77,7 @@ namespace Unity.Netcode.RuntimeTests
 
             if (!m_DistributedAuthority)
             {
-                VerboseDebug($"Ignoring test: Clients do not have access to other player objects in {m_SessionModeType} mode.");
+                VerboseDebug($"Ignoring test: Clients do not have access to other player objects in {m_NetworkTopologyType} mode.");
                 return;
             }
 
@@ -90,7 +90,7 @@ namespace Unity.Netcode.RuntimeTests
         {
             if (m_DistributedAuthority)
             {
-                VerboseDebug($"Ignoring test: Clients have access to other player objects in {m_SessionModeType} mode.");
+                VerboseDebug($"Ignoring test: Clients have access to other player objects in {m_NetworkTopologyType} mode.");
                 return;
             }
 

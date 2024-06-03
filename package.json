@@ -2,23 +2,23 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.0.0-exp.4",
+  "version": "2.0.0-exp.5",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
     "com.unity.transport": "2.2.1"
   },
   "_upm": {
-    "changelog": "### Added\n\n- Added `NetworkRigidbodyBase.AttachToFixedJoint` and `NetworkRigidbodyBase.DetachFromFixedJoint` to replace parenting for rigid bodies that have `NetworkRigidbodyBase.UseRigidBodyForMotion` enabled. (#2933)\n- Added `NetworkBehaviour.OnNetworkPreSpawn` and `NetworkBehaviour.OnNetworkPostSpawn` methods that provide the ability to handle pre and post spawning actions during the `NetworkObject` spawn sequence. (#2912)\n- Added a client-side only `NetworkBehaviour.OnNetworkSessionSynchronized` convenience method that is invoked on all `NetworkBehaviour`s after a newly joined client has finished synchronizing with the network session in progress. (#2912)\n- Added `NetworkBehaviour.OnInSceneObjectsSpawned` convenience method that is invoked when all in-scene `NetworkObject`s have been spawned after a scene has been loaded or upon a host or server starting. (#2912)\n\n### Fixed\n\n- Fixed issue where non-authoritative rigid bodies with `NetworkRigidbodyBase.UseRigidBodyForMotion` enabled would constantly log errors about the renderTime being before `StartTimeConsumed`. (#2933)\n- Fixed issue where in-scene placed NetworkObjects could be destroyed if a client disconnects early and/or before approval. (#2924)\n- Fixed issue where a `NetworkObject` component's associated `NetworkBehaviour` components would not be detected if scene loading is disabled in the editor and the currently loaded scene has in-scene placed `NetworkObject`s. (#2912)\n- Fixed issue where an in-scene placed `NetworkObject` with `NetworkTransform` that is also parented under a `GameObject` would not properly synchronize when the parent `GameObject` had a world space position other than 0,0,0. (#2898)\n\n### Changed\n\n- Change all the access modifiers of test class from Public to Internal (#2930)\n- Changed messages are now sorted by enum values as opposed to ordinally sorting the messages by their type name. (#2929)\n- Changed `NetworkClient.SessionModeTypes` to `NetworkClient.NetworkTopologyTypes`. (#2875)\n- Changed `NetworkClient.SessionModeType` to `NetworkClient.NetworkTopologyType`. (#2875)\n- Changed `NetworkConfig.SessionMode` to `NeworkConfig.NetworkTopology`. (#2875)"
+    "changelog": "### Fixed\n\n- Fixed issue where SessionOwner message was being treated as a new entry for the new message indexing when it should have been ordinally sorted with the legacy message indices. (#2942)"
   },
   "upmCi": {
-    "footprint": "3e5693a7baed1b97a205035203bc4da81af55612"
+    "footprint": "a38ece4dabc6c27e6618262e980d5de89bbda2e8"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.0/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "f4917e9cb719980bf229a71484d6f5467a2ad4e0"
+    "revision": "79e8fc8634b961f05fbc3f79e82d57c8f131c715"
   },
   "samples": [
     {

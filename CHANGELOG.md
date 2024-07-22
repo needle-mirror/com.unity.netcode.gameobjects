@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
+## [1.10.0] - 2024-07-22
+
+### Added
+
+- Added `NetworkBehaviour.OnNetworkPreSpawn` and `NetworkBehaviour.OnNetworkPostSpawn` methods that provide the ability to handle pre and post spawning actions during the `NetworkObject` spawn sequence. (#2906)
+- Added a client-side only `NetworkBehaviour.OnNetworkSessionSynchronized` convenience method that is invoked on all `NetworkBehaviour`s after a newly joined client has finished synchronizing with the network session in progress. (#2906)
+- Added `NetworkBehaviour.OnInSceneObjectsSpawned` convenience method that is invoked when all in-scene `NetworkObject`s have been spawned after a scene has been loaded or upon a host or server starting. (#2906)
+
+### Fixed
+
+- Fixed issue where the realtime network stats monitor was not able to display RPC traffic in release builds due to those stats being only available in development builds or the editor. (#2980)
+- Fixed issue where `NetworkManager.ScenesLoaded` was not being updated if `PostSynchronizationSceneUnloading` was set and any loaded scenes not used during synchronization were unloaded.(#2977)
+- Fixed issue where internal delta serialization could not have a byte serializer defined when serializing deltas for other types. Added `[GenerateSerializationForType(typeof(byte))]` to both the `NetworkVariable` and `AnticipatedNetworkVariable` classes to assure a byte serializer is defined. (#2953)
+- Fixed issue with the client count not being correct on the host or server side when a client disconnects itself from a session. (#2941)
+- Fixed issue with the host trying to send itself a message that it has connected when first starting up. (#2941)
+- Fixed issue where in-scene placed NetworkObjects could be destroyed if a client disconnects early and/or before approval. (#2923)
+- Fixed issue where `NetworkDeltaPosition` would "jitter" periodically if both unreliable delta state updates and half-floats were used together. (#2922)
+- Fixed issue where `NetworkRigidbody2D` would not properly change body type based on the instance's authority when spawned. (#2916)
+- Fixed issue where a `NetworkObject` component's associated `NetworkBehaviour` components would not be detected if scene loading is disabled in the editor and the currently loaded scene has in-scene placed `NetworkObject`s. (#2906)
+- Fixed issue where an in-scene placed `NetworkObject` with `NetworkTransform` that is also parented under a `GameObject` would not properly synchronize when the parent `GameObject` had a world space position other than 0,0,0. (#2895)
+
+### Changed
+
 
 ## [1.9.1] - 2024-04-18
 
@@ -16,7 +39,6 @@ Additional documentation and release notes are available at [Multiplayer Documen
 - Added virtual method NetworkVariableBase.OnInitialize() which can be used by NetworkVariable subclasses to add initialization code (#2820)
 - Added virtual method NetworkVariableBase.Update(), which is called once per frame to support behaviors such as interpolation between an anticipated value and an authoritative one. (#2820)
 - Added NetworkTime.TickWithPartial, which represents the current tick as a double that includes the fractional/partial tick value. (#2820)
-- Added NetworkTickSystem.AnticipationTick, which can be helpful with implementation of client anticipation. This value represents the tick the current local client was at at the beginning of the most recent network round trip, which enables it to correlate server update ticks with the client tick that may have triggered them. (#2820)
 - `NetworkVariable` now includes built-in support for `NativeHashSet`, `NativeHashMap`, `List`, `HashSet`, and `Dictionary` (#2813)
 - `NetworkVariable` now includes delta compression for collection values (`NativeList`, `NativeArray`, `NativeHashSet`, `NativeHashMap`, `List`, `HashSet`, `Dictionary`, and `FixedString` types) to save bandwidth by only sending the values that changed. (Note: For `NativeList`, `NativeArray`, and `List`, this algorithm works differently than that used in `NetworkList`. This algorithm will use less bandwidth for "set" and "add" operations, but `NetworkList` is more bandwidth-efficient if you are performing frequent "insert" operations.) (#2813)
 - `UserNetworkVariableSerialization` now has optional callbacks for `WriteDelta` and `ReadDelta`. If both are provided, they will be used for all serialization operations on NetworkVariables of that type except for the first one for each client. If either is missing, the existing `Write` and `Read` will always be used. (#2813)

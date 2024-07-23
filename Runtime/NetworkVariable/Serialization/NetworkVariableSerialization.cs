@@ -17,12 +17,6 @@ namespace Unity.Netcode
         internal static bool IsDistributedAuthority => NetworkManager.IsDistributedAuthority;
 
         /// <summary>
-        /// The collection item type tells the CMB server how to read the bytes of each item in the collection
-        /// </summary>
-        /// DANGO-EXP TODO: Determine if this is distributed authority only and impacts of this in client-server
-        internal static CollectionItemType Type = CollectionItemType.Unknown;
-
-        /// <summary>
         /// A callback to check if two values are equal.
         /// </summary>
         public delegate bool EqualsDelegate(ref T a, ref T b);
@@ -59,7 +53,20 @@ namespace Unity.Netcode
         /// <param name="value"></param>
         public static void Write(FastBufferWriter writer, ref T value)
         {
-            Serializer.Write(writer, ref value);
+            if (IsDistributedAuthority)
+            {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+                if (!NetworkManager.DisableNotOptimizedSerializedType && !Serializer.IsDistributedAuthorityOptimized)
+                {
+                    NetworkManager.LogSerializedTypeNotOptimized<T>();
+                }
+#endif
+                Serializer.WriteDistributedAuthority(writer, ref value);
+            }
+            else
+            {
+                Serializer.Write(writer, ref value);
+            }
         }
 
         /// <summary>
@@ -84,7 +91,14 @@ namespace Unity.Netcode
         /// <param name="value"></param>
         public static void Read(FastBufferReader reader, ref T value)
         {
-            Serializer.Read(reader, ref value);
+            if (IsDistributedAuthority)
+            {
+                Serializer.ReadDistributedAuthority(reader, ref value);
+            }
+            else
+            {
+                Serializer.Read(reader, ref value);
+            }
         }
 
         /// <summary>
@@ -106,7 +120,20 @@ namespace Unity.Netcode
         /// <param name="value"></param>
         public static void WriteDelta(FastBufferWriter writer, ref T value, ref T previousValue)
         {
-            Serializer.WriteDelta(writer, ref value, ref previousValue);
+            if (IsDistributedAuthority)
+            {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+                if (!NetworkManager.DisableNotOptimizedSerializedType && !Serializer.IsDistributedAuthorityOptimized)
+                {
+                    NetworkManager.LogSerializedTypeNotOptimized<T>();
+                }
+#endif
+                Serializer.WriteDeltaDistributedAuthority(writer, ref value, ref previousValue);
+            }
+            else
+            {
+                Serializer.WriteDelta(writer, ref value, ref previousValue);
+            }
         }
 
         /// <summary>
@@ -131,7 +158,14 @@ namespace Unity.Netcode
         /// <param name="value"></param>
         public static void ReadDelta(FastBufferReader reader, ref T value)
         {
-            Serializer.ReadDelta(reader, ref value);
+            if (IsDistributedAuthority)
+            {
+                Serializer.ReadDeltaDistributedAuthority(reader, ref value);
+            }
+            else
+            {
+                Serializer.ReadDelta(reader, ref value);
+            }
         }
 
         /// <summary>

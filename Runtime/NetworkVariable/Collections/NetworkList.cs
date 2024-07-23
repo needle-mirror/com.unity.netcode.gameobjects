@@ -94,18 +94,18 @@ namespace Unity.Netcode
                 {
                     case NetworkListEvent<T>.EventType.Add:
                         {
-                            NetworkVariableSerialization<T>.Write(writer, ref element.Value);
+                            NetworkVariableSerialization<T>.Serializer.Write(writer, ref element.Value);
                         }
                         break;
                     case NetworkListEvent<T>.EventType.Insert:
                         {
                             BytePacker.WriteValueBitPacked(writer, element.Index);
-                            NetworkVariableSerialization<T>.Write(writer, ref element.Value);
+                            NetworkVariableSerialization<T>.Serializer.Write(writer, ref element.Value);
                         }
                         break;
                     case NetworkListEvent<T>.EventType.Remove:
                         {
-                            NetworkVariableSerialization<T>.Write(writer, ref element.Value);
+                            NetworkVariableSerialization<T>.Serializer.Write(writer, ref element.Value);
                         }
                         break;
                     case NetworkListEvent<T>.EventType.RemoveAt:
@@ -116,7 +116,7 @@ namespace Unity.Netcode
                     case NetworkListEvent<T>.EventType.Value:
                         {
                             BytePacker.WriteValueBitPacked(writer, element.Index);
-                            NetworkVariableSerialization<T>.Write(writer, ref element.Value);
+                            NetworkVariableSerialization<T>.Serializer.Write(writer, ref element.Value);
                         }
                         break;
                     case NetworkListEvent<T>.EventType.Clear:
@@ -133,13 +133,13 @@ namespace Unity.Netcode
         {
             if (m_NetworkManager.DistributedAuthorityMode)
             {
-                writer.WriteValueSafe(NetworkVariableSerialization<T>.Type);
-                if (NetworkVariableSerialization<T>.Type == CollectionItemType.Unmanaged)
+                writer.WriteValueSafe(NetworkVariableSerialization<T>.Serializer.Type);
+                if (NetworkVariableSerialization<T>.Serializer.Type == NetworkVariableType.Unmanaged)
                 {
                     // Write the size of the unmanaged serialized type as it has a fixed size. This allows the CMB runtime to correctly read the unmanged type.
                     var placeholder = new T();
                     var startPos = writer.Position;
-                    NetworkVariableSerialization<T>.Write(writer, ref placeholder);
+                    NetworkVariableSerialization<T>.Serializer.Write(writer, ref placeholder);
                     var size = writer.Position - startPos;
                     writer.Seek(startPos);
                     BytePacker.WriteValueBitPacked(writer, size);
@@ -148,7 +148,7 @@ namespace Unity.Netcode
             writer.WriteValueSafe((ushort)m_List.Length);
             for (int i = 0; i < m_List.Length; i++)
             {
-                NetworkVariableSerialization<T>.Write(writer, ref m_List.ElementAt(i));
+                NetworkVariableSerialization<T>.Serializer.Write(writer, ref m_List.ElementAt(i));
             }
         }
 
@@ -158,9 +158,9 @@ namespace Unity.Netcode
             m_List.Clear();
             if (m_NetworkManager.DistributedAuthorityMode)
             {
-                // Collection item type is used by the CMB rust service, drop value here.
-                reader.ReadValueSafe(out CollectionItemType type);
-                if (type == CollectionItemType.Unmanaged)
+                SerializationTools.ReadType(reader, NetworkVariableSerialization<T>.Serializer);
+                // Collection item type is used by the DA server, drop value here.
+                if (NetworkVariableSerialization<T>.Serializer.Type == NetworkVariableType.Unmanaged)
                 {
                     ByteUnpacker.ReadValueBitPacked(reader, out int _);
                 }
@@ -169,7 +169,7 @@ namespace Unity.Netcode
             for (int i = 0; i < count; i++)
             {
                 var value = new T();
-                NetworkVariableSerialization<T>.Read(reader, ref value);
+                NetworkVariableSerialization<T>.Serializer.Read(reader, ref value);
                 m_List.Add(value);
             }
         }
@@ -186,7 +186,7 @@ namespace Unity.Netcode
                     case NetworkListEvent<T>.EventType.Add:
                         {
                             var value = new T();
-                            NetworkVariableSerialization<T>.Read(reader, ref value);
+                            NetworkVariableSerialization<T>.Serializer.Read(reader, ref value);
                             m_List.Add(value);
 
                             if (OnListChanged != null)
@@ -215,7 +215,7 @@ namespace Unity.Netcode
                         {
                             ByteUnpacker.ReadValueBitPacked(reader, out int index);
                             var value = new T();
-                            NetworkVariableSerialization<T>.Read(reader, ref value);
+                            NetworkVariableSerialization<T>.Serializer.Read(reader, ref value);
 
                             if (index < m_List.Length)
                             {
@@ -252,7 +252,7 @@ namespace Unity.Netcode
                     case NetworkListEvent<T>.EventType.Remove:
                         {
                             var value = new T();
-                            NetworkVariableSerialization<T>.Read(reader, ref value);
+                            NetworkVariableSerialization<T>.Serializer.Read(reader, ref value);
                             int index = m_List.IndexOf(value);
                             if (index == -1)
                             {
@@ -315,7 +315,7 @@ namespace Unity.Netcode
                         {
                             ByteUnpacker.ReadValueBitPacked(reader, out int index);
                             var value = new T();
-                            NetworkVariableSerialization<T>.Read(reader, ref value);
+                            NetworkVariableSerialization<T>.Serializer.Read(reader, ref value);
                             if (index >= m_List.Length)
                             {
                                 throw new Exception("Shouldn't be here, index is higher than list length");

@@ -38,6 +38,7 @@ namespace Unity.Netcode.RuntimeTests
         internal class TestNetworkComponent : NetworkBehaviour
         {
             public NetworkList<int> MyNetworkList = new NetworkList<int>(new List<int> { 1, 2, 3 });
+            public NetworkVariable<int> MyNetworkVar = new NetworkVariable<int>(3);
 
             [Rpc(SendTo.NotAuthority)]
             public void TestNotAuthorityRpc(byte[] _)
@@ -87,7 +88,7 @@ namespace Unity.Netcode.RuntimeTests
             Client.LogLevel = LogLevel.Developer;
 
             // Validate we are in distributed authority mode with client side spawning and using CMB Service
-            Assert.True(Client.DistributedAuthorityMode, "Distributed authority is not set!");
+            Assert.True(Client.NetworkConfig.NetworkTopology == NetworkTopologyTypes.DistributedAuthority, "Distributed authority topology is not set!");
             Assert.True(Client.AutoSpawnPlayerPrefabClientSide, "Client side spawning is not set!");
             Assert.True(Client.CMBServiceConnection, "CMBServiceConnection is not set!");
 
@@ -101,6 +102,9 @@ namespace Unity.Netcode.RuntimeTests
 
         protected override IEnumerator OnStartedServerAndClients()
         {
+            // Validate the NetworkManager are in distributed authority mode
+            Assert.True(Client.DistributedAuthorityMode, "Distributed authority is not set!");
+
             // Register hooks after starting clients and server (in this case just the one client)
             // We do this at this point in time because the MessageManager exists (happens within the same call stack when starting NetworkManagers)
             m_ClientCodecHook = new CodecTestHooks();
@@ -216,6 +220,47 @@ namespace Unity.Netcode.RuntimeTests
             };
 
             yield return SendMessage(ref message);
+        }
+
+        [UnityTest]
+        public IEnumerator NetworkVariableDelta_WithValueUpdate()
+        {
+            var networkObj = CreateNetworkObjectPrefab("TestObject");
+            networkObj.AddComponent<TestNetworkComponent>();
+            var instance = SpawnObject(networkObj, Client);
+            yield return m_ClientCodecHook.WaitForMessageReceived<CreateObjectMessage>();
+            var component = instance.GetComponent<TestNetworkComponent>();
+
+            var newValue = 5;
+            component.MyNetworkVar.Value = newValue;
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            Assert.AreEqual(newValue, component.MyNetworkVar.Value);
+        }
+
+        [UnityTest]
+        public IEnumerator NetworkListDelta_WithValueUpdate()
+        {
+            var networkObj = CreateNetworkObjectPrefab("TestObject");
+            networkObj.AddComponent<TestNetworkComponent>();
+            var instance = SpawnObject(networkObj, Client);
+            yield return m_ClientCodecHook.WaitForMessageReceived<CreateObjectMessage>();
+            var component = instance.GetComponent<TestNetworkComponent>();
+
+            component.MyNetworkList.Add(5);
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            component.MyNetworkList.Add(6);
+            component.MyNetworkList.Add(7);
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            component.MyNetworkList.Insert(1, 8);
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            component.MyNetworkList.Insert(8, 11);
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            component.MyNetworkList.Remove(6);
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            component.MyNetworkList.RemoveAt(2);
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
+            component.MyNetworkList.Clear();
+            yield return m_ClientCodecHook.WaitForMessageReceived<NetworkVariableDeltaMessage>();
         }
 
         [UnityTest]

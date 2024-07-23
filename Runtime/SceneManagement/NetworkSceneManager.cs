@@ -774,6 +774,7 @@ namespace Unity.Netcode
         /// <summary>
         /// This setting changes how clients handle scene loading when initially synchronizing with the server.<br />
         /// The server or host should set this value as clients will automatically be synchronized with the server (or host) side.
+        /// </summary>
         /// <remarks>
         /// <b>LoadSceneMode.Single:</b> All currently loaded scenes on the client will be unloaded and the
         /// server's currently active scene will be loaded in single mode on the client unless it was already
@@ -2406,16 +2407,6 @@ namespace Unity.Netcode
                                 NetworkManager.ConnectionManager.CreateAndSpawnPlayer(NetworkManager.LocalClientId);
                             }
 
-                            // Client is now synchronized and fully "connected".  This also means the client can send "RPCs" at this time
-                            NetworkManager.ConnectionManager.InvokeOnClientConnectedCallback(NetworkManager.LocalClientId);
-
-                            // Notify the client that they have finished synchronizing
-                            OnSceneEvent?.Invoke(new SceneEvent()
-                            {
-                                SceneEventType = sceneEventData.SceneEventType,
-                                ClientId = NetworkManager.LocalClientId, // Client sent this to the server
-                            });
-
                             // Process any SceneEventType.ObjectSceneChanged messages that
                             // were deferred while synchronizing and migrate the associated
                             // NetworkObjects to their newly assigned scenes.
@@ -2429,6 +2420,16 @@ namespace Unity.Netcode
                                 SceneManagerHandler.UnloadUnassignedScenes(NetworkManager);
                             }
 
+                            // Client is now synchronized and fully "connected".  This also means the client can send "RPCs" at this time
+                            NetworkManager.ConnectionManager.InvokeOnClientConnectedCallback(NetworkManager.LocalClientId);
+
+                            // Notify the client that they have finished synchronizing
+                            OnSceneEvent?.Invoke(new SceneEvent()
+                            {
+                                SceneEventType = sceneEventData.SceneEventType,
+                                ClientId = NetworkManager.LocalClientId, // Client sent this to the server
+                            });
+
                             OnSynchronizeComplete?.Invoke(NetworkManager.LocalClientId);
 
                             if (NetworkLog.CurrentLogLevel <= LogLevel.Developer)
@@ -2436,10 +2437,7 @@ namespace Unity.Netcode
                                 NetworkLog.LogInfo($"[Client-{NetworkManager.LocalClientId}][Scene Management Enabled] Synchronization complete!");
                             }
                             // For convenience, notify all NetworkBehaviours that synchronization is complete.
-                            foreach (var networkObject in NetworkManager.SpawnManager.SpawnedObjectsList)
-                            {
-                                networkObject.InternalNetworkSessionSynchronized();
-                            }
+                            NetworkManager.SpawnManager.NotifyNetworkObjectsSynchronized();
 
                             if (NetworkManager.DistributedAuthorityMode && HasSceneAuthority() && IsRestoringSession)
                             {

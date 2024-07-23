@@ -35,7 +35,7 @@ namespace Unity.Netcode
 
         private NetworkManager m_InternalNetworkManager;
 
-        internal virtual NetworkVariableType Type => NetworkVariableType.Custom;
+        internal virtual NetworkVariableType Type => NetworkVariableType.Unknown;
 
         private protected NetworkManager m_NetworkManager
         {
@@ -311,7 +311,6 @@ namespace Unity.Netcode
         /// </summary>
         /// <param name="reader">The stream to read the state from</param>
         public abstract void ReadField(FastBufferReader reader);
-
         /// <summary>
         /// Reads delta from the reader and applies them to the internal value
         /// </summary>
@@ -327,47 +326,4 @@ namespace Unity.Netcode
             m_InternalNetworkManager = null;
         }
     }
-
-    /// <summary>
-    /// Enum representing the different types of Network Variables.
-    /// </summary>
-    public enum NetworkVariableType : byte
-    {
-        /// <summary>
-        /// Value
-        /// Used for all of the basic NetworkVariables that contain a single value
-        /// </summary>
-        Value = 0,
-
-        /// <summary>
-        /// Custom
-        /// For any custom implemented extension of the NetworkVariableBase
-        /// </summary>
-        Custom = 1,
-
-        /// <summary>
-        /// NetworkList
-        /// </summary>
-        NetworkList = 2
-    }
-
-    public enum CollectionItemType : byte
-    {
-        /// <summary>
-        /// For any type that is not valid inside a NetworkVariable collection
-        /// </summary>
-        Unknown = 0,
-
-        /// <summary>
-        /// The following types are valid types inside of NetworkVariable collections
-        /// </summary>
-        Short = 1,
-        UShort = 2,
-        Int = 3,
-        UInt = 4,
-        Long = 5,
-        ULong = 6,
-        Unmanaged = 7,
-    }
-
 }

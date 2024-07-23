@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [2.0.0-pre.3] - 2024-07-23
+
+### Added
+- Added: `UnityTransport.GetNetworkDriver` and `UnityTransport.GetLocalEndpoint` methods to expose the driver and local endpoint being used. (#2978)
+
+### Fixed
+
+- Fixed issue where deferred despawn was causing GC allocations when converting an `IEnumerable` to a list. (#2983)
+- Fixed issue where the realtime network stats monitor was not able to display RPC traffic in release builds due to those stats being only available in development builds or the editor. (#2979)
+- Fixed issue where `NetworkManager.ScenesLoaded` was not being updated if `PostSynchronizationSceneUnloading` was set and any loaded scenes not used during synchronization were unloaded. (#2971)
+- Fixed issue where `Rigidbody2d` under Unity 6000.0.11f1 has breaking changes where `velocity` is now `linearVelocity` and `isKinematic` is replaced by `bodyType`. (#2971)
+- Fixed issue where `NetworkSpawnManager.InstantiateAndSpawn` and `NetworkObject.InstantiateAndSpawn` were not honoring the ownerClientId parameter when using a client-server network topology. (#2968)
+- Fixed issue where internal delta serialization could not have a byte serializer defined when serializing deltas for other types. Added `[GenerateSerializationForType(typeof(byte))]` to both the `NetworkVariable` and `AnticipatedNetworkVariable` classes to assure a byte serializer is defined.(#2962)
+- Fixed issue when scene management was disabled and the session owner would still try to synchronize a late joining client. (#2962)
+- Fixed issue when using a distributed authority network topology where it would allow a session owner to spawn a `NetworkObject` prior to being approved. Now, an error message is logged and the `NetworkObject` will not be spawned prior to the client being approved.  (#2962)
+- Fixed issue where attempting to spawn during `NetworkBehaviour.OnInSceneObjectsSpawned` and `NetworkBehaviour.OnNetworkSessionSynchronized` notifications would throw a collection modified exception.  (#2962)
+
+### Changed
+
+- Changed logic where clients can now set the `NetworkSceneManager` client synchronization mode when using a distributed authority network topology. (#2985)
+
+
 ## [2.0.0-pre.2] - 2024-06-17
 
 ### Added

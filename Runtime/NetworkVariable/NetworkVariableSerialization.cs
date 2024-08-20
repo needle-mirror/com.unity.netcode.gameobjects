@@ -349,7 +349,10 @@ namespace Unity.Netcode
             duplicatedValue.Clear();
             foreach (var item in value)
             {
-                duplicatedValue.Add(item);
+                // This handles the nested list scenario List<List<T>>
+                T subValue = default;
+                NetworkVariableSerialization<T>.Duplicate(item, ref subValue);
+                duplicatedValue.Add(subValue);
             }
         }
     }
@@ -421,6 +424,9 @@ namespace Unity.Netcode
             duplicatedValue.Clear();
             foreach (var item in value)
             {
+                // Handles nested HashSets
+                T subValue = default;
+                NetworkVariableSerialization<T>.Duplicate(item, ref subValue);
                 duplicatedValue.Add(item);
             }
         }
@@ -497,7 +503,12 @@ namespace Unity.Netcode
             duplicatedValue.Clear();
             foreach (var item in value)
             {
-                duplicatedValue.Add(item.Key, item.Value);
+                // Handles nested dictionaries
+                TKey subKey = default;
+                TVal subValue = default;
+                NetworkVariableSerialization<TKey>.Duplicate(item.Key, ref subKey);
+                NetworkVariableSerialization<TVal>.Duplicate(item.Value, ref subValue);
+                duplicatedValue.Add(subKey, subValue);
             }
         }
     }
@@ -698,7 +709,7 @@ namespace Unity.Netcode
             {
                 var val = value[i];
                 var prevVal = previousValue[i];
-                if (!NetworkVariableSerialization<byte>.AreEqual(ref val, ref prevVal))
+                if (val != prevVal)
                 {
                     ++numChanges;
                     changes.Set(i);
@@ -723,19 +734,11 @@ namespace Unity.Netcode
             unsafe
             {
                 byte* ptr = value.GetUnsafePtr();
-                byte* prevPtr = previousValue.GetUnsafePtr();
                 for (int i = 0; i < value.Length; ++i)
                 {
                     if (changes.IsSet(i))
                     {
-                        if (i < previousValue.Length)
-                        {
-                            NetworkVariableSerialization<byte>.WriteDelta(writer, ref ptr[i], ref prevPtr[i]);
-                        }
-                        else
-                        {
-                            NetworkVariableSerialization<byte>.Write(writer, ref ptr[i]);
-                        }
+                        writer.WriteByteSafe(ptr[i]);
                     }
                 }
             }

@@ -2,23 +2,23 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.0.0-pre.3",
+  "version": "2.0.0-pre.4",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
     "com.unity.transport": "2.3.0"
   },
   "_upm": {
-    "changelog": "### Added\n- Added: `UnityTransport.GetNetworkDriver` and `UnityTransport.GetLocalEndpoint` methods to expose the driver and local endpoint being used. (#2978)\n\n### Fixed\n\n- Fixed issue where deferred despawn was causing GC allocations when converting an `IEnumerable` to a list. (#2983)\n- Fixed issue where the realtime network stats monitor was not able to display RPC traffic in release builds due to those stats being only available in development builds or the editor. (#2979)\n- Fixed issue where `NetworkManager.ScenesLoaded` was not being updated if `PostSynchronizationSceneUnloading` was set and any loaded scenes not used during synchronization were unloaded. (#2971)\n- Fixed issue where `Rigidbody2d` under Unity 6000.0.11f1 has breaking changes where `velocity` is now `linearVelocity` and `isKinematic` is replaced by `bodyType`. (#2971)\n- Fixed issue where `NetworkSpawnManager.InstantiateAndSpawn` and `NetworkObject.InstantiateAndSpawn` were not honoring the ownerClientId parameter when using a client-server network topology. (#2968)\n- Fixed issue where internal delta serialization could not have a byte serializer defined when serializing deltas for other types. Added `[GenerateSerializationForType(typeof(byte))]` to both the `NetworkVariable` and `AnticipatedNetworkVariable` classes to assure a byte serializer is defined.(#2962)\n- Fixed issue when scene management was disabled and the session owner would still try to synchronize a late joining client. (#2962)\n- Fixed issue when using a distributed authority network topology where it would allow a session owner to spawn a `NetworkObject` prior to being approved. Now, an error message is logged and the `NetworkObject` will not be spawned prior to the client being approved.  (#2962)\n- Fixed issue where attempting to spawn during `NetworkBehaviour.OnInSceneObjectsSpawned` and `NetworkBehaviour.OnNetworkSessionSynchronized` notifications would throw a collection modified exception.  (#2962)\n\n### Changed\n\n- Changed logic where clients can now set the `NetworkSceneManager` client synchronization mode when using a distributed authority network topology. (#2985)"
+    "changelog": "### Added\n\n- Added `NetworkVariable.CheckDirtyState` that is to be used in tandem with collections in order to detect whether the collection or an item within the collection has changed. (#3004)\n\n### Fixed\n\n- Fixed issue where nested `NetworkTransform` components were not getting updated. (#3016)\n- Fixed issue by adding null checks in `NetworkVariableBase.CanClientRead` and `NetworkVariableBase.CanClientWrite` methods to ensure safe access to `NetworkBehaviour`. (#3012)\n- Fixed issue where `FixedStringSerializer<T>` was using `NetworkVariableSerialization<byte>.AreEqual` to determine if two bytes were equal causes an exception to be thrown due to no byte serializer having been defined. (#3009)\n- Fixed Issue where a state with dual triggers, inbound and outbound, could cause a false layer to layer state transition message to be sent to non-authority `NetworkAnimator` instances and cause a warning message to be logged. (#3008)\n- Fixed issue using collections within `NetworkVariable` where the collection would not detect changes to items or nested items. (#3004)\n- Fixed issue where `List`, `Dictionary`, and `HashSet` collections would not uniquely duplicate nested collections. (#3004)\n- Fixed issue where `NotAuthorityTarget` would include the service observer in the list of targets to send the RPC to as opposed to excluding the service observer as it should. (#3000)\n- Fixed issue where `ProxyRpcTargetGroup` could attempt to send a message if there were no targets to send to. (#3000)\n\n### Changed\n\n- Changed `NetworkAnimator` to automatically switch to owner authoritative mode when using a distributed authority network topology. (#3021)\n- Changed permissions exception thrown in `NetworkList` to exiting early with a logged error that is now a unified permissions message within `NetworkVariableBase`. (#3004)\n- Changed permissions exception thrown in `NetworkVariable.Value` to exiting early with a logged error that is now a unified permissions message within `NetworkVariableBase`. (#3004)"
   },
   "upmCi": {
-    "footprint": "fbae2629229fb08020f4b9cef5656e6fdf517c3d"
+    "footprint": "48286e9f7b0e053fe7f7b524bafc69a99c2906fc"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.0/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "8575c902227d221f987d9cb869d501749f8631b4"
+    "revision": "2802dfcd13c3be1ac356191cc87d1559203d2db3"
   },
   "samples": [
     {

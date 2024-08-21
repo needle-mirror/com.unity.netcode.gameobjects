@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [2.0.0-pre.4] - 2024-08-21
+
+### Added
+
+- Added `NetworkVariable.CheckDirtyState` that is to be used in tandem with collections in order to detect whether the collection or an item within the collection has changed. (#3004)
+
+### Fixed
+
+- Fixed issue where nested `NetworkTransform` components were not getting updated. (#3016)
+- Fixed issue by adding null checks in `NetworkVariableBase.CanClientRead` and `NetworkVariableBase.CanClientWrite` methods to ensure safe access to `NetworkBehaviour`. (#3012)
+- Fixed issue where `FixedStringSerializer<T>` was using `NetworkVariableSerialization<byte>.AreEqual` to determine if two bytes were equal causes an exception to be thrown due to no byte serializer having been defined. (#3009)
+- Fixed Issue where a state with dual triggers, inbound and outbound, could cause a false layer to layer state transition message to be sent to non-authority `NetworkAnimator` instances and cause a warning message to be logged. (#3008)
+- Fixed issue using collections within `NetworkVariable` where the collection would not detect changes to items or nested items. (#3004)
+- Fixed issue where `List`, `Dictionary`, and `HashSet` collections would not uniquely duplicate nested collections. (#3004)
+- Fixed issue where `NotAuthorityTarget` would include the service observer in the list of targets to send the RPC to as opposed to excluding the service observer as it should. (#3000)
+- Fixed issue where `ProxyRpcTargetGroup` could attempt to send a message if there were no targets to send to. (#3000)
+
+### Changed
+
+- Changed `NetworkAnimator` to automatically switch to owner authoritative mode when using a distributed authority network topology. (#3021)
+- Changed permissions exception thrown in `NetworkList` to exiting early with a logged error that is now a unified permissions message within `NetworkVariableBase`. (#3004)
+- Changed permissions exception thrown in `NetworkVariable.Value` to exiting early with a logged error that is now a unified permissions message within `NetworkVariableBase`. (#3004)
+
+
 ## [2.0.0-pre.3] - 2024-07-23
 
 ### Added

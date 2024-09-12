@@ -735,42 +735,23 @@ namespace Unity.Netcode
                 RemovePendingClient(ownerClientId);
 
                 var client = AddClient(ownerClientId);
-                if (!NetworkManager.DistributedAuthorityMode && response.CreatePlayerObject && NetworkManager.NetworkConfig.PlayerPrefab != null)
+
+                // Server-side spawning (only if there is a prefab hash or player prefab provided)
+                if (!NetworkManager.DistributedAuthorityMode && response.CreatePlayerObject && (response.PlayerPrefabHash.HasValue || NetworkManager.NetworkConfig.PlayerPrefab != null))
                 {
-                    var prefabNetworkObject = NetworkManager.NetworkConfig.PlayerPrefab.GetComponent<NetworkObject>();
-                    var playerPrefabHash = response.PlayerPrefabHash ?? prefabNetworkObject.GlobalObjectIdHash;
-
-                    // Generate a SceneObject for the player object to spawn
-                    // Note: This is only to create the local NetworkObject, many of the serialized properties of the player prefab will be set when instantiated.
-                    var sceneObject = new NetworkObject.SceneObject
-                    {
-                        OwnerClientId = ownerClientId,
-                        IsPlayerObject = true,
-                        IsSceneObject = false,
-                        HasTransform = prefabNetworkObject.SynchronizeTransform,
-                        Hash = playerPrefabHash,
-                        TargetClientId = ownerClientId,
-                        DontDestroyWithOwner = prefabNetworkObject.DontDestroyWithOwner,
-                        Transform = new NetworkObject.SceneObject.TransformData
-                        {
-                            Position = response.Position.GetValueOrDefault(),
-                            Rotation = response.Rotation.GetValueOrDefault()
-                        }
-                    };
-
-                    // Create the player NetworkObject locally
-                    var networkObject = NetworkManager.SpawnManager.CreateLocalNetworkObject(sceneObject);
+                    var playerObject = response.PlayerPrefabHash.HasValue ? NetworkManager.SpawnManager.GetNetworkObjectToSpawn(response.PlayerPrefabHash.Value, ownerClientId, response.Position.GetValueOrDefault(), response.Rotation.GetValueOrDefault())
+                        : NetworkManager.SpawnManager.GetNetworkObjectToSpawn(NetworkManager.NetworkConfig.PlayerPrefab.GetComponent<NetworkObject>().GlobalObjectIdHash, ownerClientId, response.Position.GetValueOrDefault(), response.Rotation.GetValueOrDefault());
 
                     // Spawn the player NetworkObject locally
                     NetworkManager.SpawnManager.SpawnNetworkObjectLocally(
-                        networkObject,
+                        playerObject,
                         NetworkManager.SpawnManager.GetNetworkObjectId(),
                         sceneObject: false,
                         playerObject: true,
                         ownerClientId,
                         destroyWithScene: false);
 
-                    client.AssignPlayerObject(ref networkObject);
+                    client.AssignPlayerObject(ref playerObject);
                 }
 
                 // Server doesn't send itself the connection approved message
@@ -871,6 +852,7 @@ namespace Unity.Netcode
                     }
                 }
 
+                // Exit early if no player object was spawned
                 if (!response.CreatePlayerObject || (response.PlayerPrefabHash == null && NetworkManager.NetworkConfig.PlayerPrefab == null))
                 {
                     return;
@@ -1003,10 +985,18 @@ namespace Unity.Netcode
                 ConnectedClientIds.Add(clientId);
             }
 
+            var distributedAuthority = NetworkManager.DistributedAuthorityMode;
+            var sessionOwnerId = NetworkManager.CurrentSessionOwner;
+            var isSessionOwner = NetworkManager.LocalClient.IsSessionOwner;
             foreach (var networkObject in NetworkManager.SpawnManager.SpawnedObjectsList)
             {
                 if (networkObject.SpawnWithObservers)
                 {
+                    // Don't add the client to the observers if hidden from the session owner
+                    if (networkObject.IsOwner && distributedAuthority && !isSessionOwner && !networkObject.Observers.Contains(sessionOwnerId))
+                    {
+                        continue;
+                    }
                     networkObject.Observers.Add(clientId);
                 }
             }
@@ -1309,7 +1299,15 @@ namespace Unity.Netcode
         {
             if (!LocalClient.IsServer)
             {
-                throw new NotServerException($"Only server can disconnect remote clients. Please use `{nameof(Shutdown)}()` instead.");
+                if (NetworkManager.NetworkConfig.NetworkTopology == NetworkTopologyTypes.ClientServer)
+                {
+                    throw new NotServerException($"Only server can disconnect remote clients. Please use `{nameof(Shutdown)}()` instead.");
+                }
+                else
+                {
+                    Debug.LogWarning($"Currently, clients cannot disconnect other clients from a distributed authority session. Please use `{nameof(Shutdown)}()` instead.");
+                    return;
+                }
             }
 
             if (clientId == NetworkManager.ServerClientId)

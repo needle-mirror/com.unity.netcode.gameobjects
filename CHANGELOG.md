@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [2.0.0] - 2024-09-12
+
+### Added
+
+- Added tooltips for all of the `NetworkObject` component's properties. (#3052)
+- Added message size validation to named and unnamed message sending functions for better error messages. (#3049)
+- Added "Check for NetworkObject Component" property to the Multiplayer->Netcode for GameObjects project settings. When disabled, this will bypass the in-editor `NetworkObject` check on `NetworkBehaviour` components. (#3031)
+- Added `NetworkTransform.SwitchTransformSpaceWhenParented` property that, when enabled, will handle the world to local, local to world, and local to local transform space transitions when interpolation is enabled. (#3013)
+- Added `NetworkTransform.TickSyncChildren` that, when enabled, will tick synchronize nested and/or child `NetworkTransform` components to eliminate any potential visual jittering that could occur if the `NetworkTransform` instances get into a state where their state updates are landing on different network ticks. (#3013)
+- Added `NetworkObject.AllowOwnerToParent` property to provide the ability to allow clients to parent owned objects when running in a client-server network topology. (#3013)
+- Added `NetworkObject.SyncOwnerTransformWhenParented` property to provide a way to disable applying the server's transform information in the parenting message on the client owner instance which can be useful for owner authoritative motion models. (#3013)
+- Added `NetcodeEditorBase` editor helper class to provide easier modification and extension of the SDK's components. (#3013)
+
+### Fixed
+
+- Fixed issue where `NetworkAnimator` would send updates to non-observer clients. (#3057)
+- Fixed issue where an exception could occur when receiving a universal RPC for a `NetworkObject` that has been despawned. (#3052)
+- Fixed issue where a NetworkObject hidden from a client that is then promoted to be session owner was not being synchronized with newly joining clients.(#3051)
+- Fixed issue where clients could have a wrong time delta on `NetworkVariableBase` which could prevent from sending delta state updates. (#3045)
+- Fixed issue where setting a prefab hash value during connection approval but not having a player prefab assigned could cause an exception when spawning a player. (#3042)
+- Fixed issue where the `NetworkSpawnManager.HandleNetworkObjectShow` could throw an exception if one of the `NetworkObject` components to show was destroyed during the same frame. (#3030)
+- Fixed issue where the `NetworkManagerHelper` was continuing to check for hierarchy changes when in play mode. (#3026)
+- Fixed issue with newly/late joined clients and `NetworkTransform` synchronization of parented `NetworkObject` instances. (#3013)
+- Fixed issue with smooth transitions between transform spaces when interpolation is enabled (requires `NetworkTransform.SwitchTransformSpaceWhenParented` to be enabled). (#3013)
+
+### Changed
+
+- Changed `NetworkTransformEditor` now uses `NetworkTransform` as the base type class to assure it doesn't display a foldout group when using the base `NetworkTransform` component class. (#3052)
+- Changed `NetworkAnimator.Awake` is now a protected virtual method. (#3052)
+- Changed  when invoking `NetworkManager.ConnectionManager.DisconnectClient` during a distributed authority session a more appropriate message is logged. (#3052)
+- Changed `NetworkTransformEditor` so it now derives from `NetcodeEditorBase`. (#3013)
+- Changed `NetworkRigidbodyBaseEditor` so it now derives from `NetcodeEditorBase`. (#3013)
+- Changed `NetworkManagerEditor` so it now derives from `NetcodeEditorBase`. (#3013)
+
+
 ## [2.0.0-pre.4] - 2024-08-21
 
 ### Added

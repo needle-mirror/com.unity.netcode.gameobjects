@@ -113,11 +113,6 @@ namespace Unity.Netcode
             }
 
             // Handle updating the currently active scene
-            var networkObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            foreach (var networkObject in networkObjects)
-            {
-                networkObject.OnValidate();
-            }
             NetworkObjectRefreshTool.ProcessActiveScene();
 
             // Refresh all build settings scenes
@@ -130,14 +125,14 @@ namespace Unity.Netcode
                     continue;
                 }
                 // Add the scene to be processed
-                NetworkObjectRefreshTool.ProcessScene(editorScene.path, false);
+                NetworkObjectRefreshTool.ProcessScene(editorScene.path, true);
             }
 
             // Process all added scenes
             NetworkObjectRefreshTool.ProcessScenes();
         }
 
-        private void OnValidate()
+        internal void OnValidate()
         {
             // do NOT regenerate GlobalObjectIdHash for NetworkPrefabs while Editor is in PlayMode
             if (EditorApplication.isPlaying && !string.IsNullOrEmpty(gameObject.scene.name))
@@ -229,6 +224,7 @@ namespace Unity.Netcode
                 if (sourceAsset != null && sourceAsset.GlobalObjectIdHash != 0 && InScenePlacedSourceGlobalObjectIdHash != sourceAsset.GlobalObjectIdHash)
                 {
                     InScenePlacedSourceGlobalObjectIdHash = sourceAsset.GlobalObjectIdHash;
+                    EditorUtility.SetDirty(this);
                 }
                 IsSceneObject = true;
             }
@@ -340,7 +336,7 @@ namespace Unity.Netcode
 
             if (!HasAuthority)
             {
-                NetworkLog.LogError($"Only the authoirty can invoke {nameof(DeferDespawn)} and local Client-{NetworkManager.LocalClientId} is not the authority of {name}!");
+                NetworkLog.LogError($"Only the authority can invoke {nameof(DeferDespawn)} and local Client-{NetworkManager.LocalClientId} is not the authority of {name}!");
                 return;
             }
 
@@ -1613,7 +1609,12 @@ namespace Unity.Netcode
             }
             else if (NetworkManager.DistributedAuthorityMode && !NetworkManager.DAHost)
             {
-                NetworkManager.SpawnManager.SendSpawnCallForObject(NetworkManager.ServerClientId, this);
+                // If spawning with observers or if not spawning with observers but the observer count is greater than 1 (i.e. owner/authority creating),
+                // then we want to send a spawn notification.
+                if (SpawnWithObservers || !SpawnWithObservers && Observers.Count > 1)
+                {
+                    NetworkManager.SpawnManager.SendSpawnCallForObject(NetworkManager.ServerClientId, this);
+                }
             }
             else
             {
@@ -2444,6 +2445,14 @@ namespace Unity.Netcode
             }
         }
 
+        internal void MarkOwnerReadVariablesDirty()
+        {
+            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
+            {
+                ChildNetworkBehaviours[i].MarkOwnerReadVariablesDirty();
+            }
+        }
+
         // NGO currently guarantees that the client will receive spawn data for all objects in one network tick.
         //  Children may arrive before their parents; when they do they are stored in OrphanedChildren and then
         //  resolved when their parents arrived.  Because we don't send a partial list of spawns (yet), something
@@ -2770,11 +2779,11 @@ namespace Unity.Netcode
             }
         }
 
-        internal void PostNetworkVariableWrite()
+        internal void PostNetworkVariableWrite(bool forced = false)
         {
             for (int k = 0; k < ChildNetworkBehaviours.Count; k++)
             {
-                ChildNetworkBehaviours[k].PostNetworkVariableWrite();
+                ChildNetworkBehaviours[k].PostNetworkVariableWrite(forced);
             }
         }
 
@@ -3053,10 +3062,15 @@ namespace Unity.Netcode
                         }
                     }
 
-                    // Add all known players to the observers list if they don't already exist
-                    foreach (var player in networkManager.SpawnManager.PlayerObjects)
+                    // Only add all other players as observers if we are spawning with observers,
+                    // otherwise user controls via NetworkShow.
+                    if (networkObject.SpawnWithObservers)
                     {
-                        networkObject.Observers.Add(player.OwnerClientId);
+                        // Add all known players to the observers list if they don't already exist
+                        foreach (var player in networkManager.SpawnManager.PlayerObjects)
+                        {
+                            networkObject.Observers.Add(player.OwnerClientId);
+                        }
                     }
                 }
             }

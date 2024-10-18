@@ -105,8 +105,12 @@ namespace Unity.Netcode
                         continue;
                     }
 
-                    peerClientIds[idx] = peerId;
-                    ++idx;
+                    // This assures if the server has not timed out prior to the client synchronizing that it doesn't exceed the allocated peer count.
+                    if (peerClientIds.Length > idx)
+                    {
+                        peerClientIds[idx] = peerId;
+                        ++idx;
+                    }
                 }
 
                 try
@@ -496,24 +500,32 @@ namespace Unity.Netcode
             // Process the incoming message queue so that we get everything from the server disconnecting us or, if we are the server, so we got everything from that client.
             MessageManager.ProcessIncomingMessageQueue();
 
-            InvokeOnClientDisconnectCallback(clientId);
-
-            if (LocalClient.IsHost)
-            {
-                InvokeOnPeerDisconnectedCallback(clientId);
-            }
-
             if (LocalClient.IsServer)
             {
+                // We need to process the disconnection before notifying
                 OnClientDisconnectFromServer(clientId);
+
+                // Now notify the client has disconnected
+                InvokeOnClientDisconnectCallback(clientId);
+
+                if (LocalClient.IsHost)
+                {
+                    InvokeOnPeerDisconnectedCallback(clientId);
+                }
             }
-            else // As long as we are not in the middle of a shutdown
-            if (!NetworkManager.ShutdownInProgress)
+            else
             {
-                // We must pass true here and not process any sends messages as we are no longer connected.
-                // Otherwise, attempting to process messages here can cause an exception within UnityTransport
-                // as the client ID is no longer valid.
-                NetworkManager.Shutdown(true);
+                // Notify local client of disconnection
+                InvokeOnClientDisconnectCallback(clientId);
+
+                // As long as we are not in the middle of a shutdown
+                if (!NetworkManager.ShutdownInProgress)
+                {
+                    // We must pass true here and not process any sends messages as we are no longer connected.
+                    // Otherwise, attempting to process messages here can cause an exception within UnityTransport
+                    // as the client ID is no longer valid.
+                    NetworkManager.Shutdown(true);
+                }
             }
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             s_TransportDisconnect.End();
@@ -552,15 +564,18 @@ namespace Unity.Netcode
             var message = new ConnectionRequestMessage
             {
                 CMBServiceConnection = NetworkManager.CMBServiceConnection,
-                TickRate = NetworkManager.NetworkConfig.TickRate,
-                EnableSceneManagement = NetworkManager.NetworkConfig.EnableSceneManagement,
-
                 // Since only a remote client will send a connection request, we should always force the rebuilding of the NetworkConfig hash value
                 ConfigHash = NetworkManager.NetworkConfig.GetConfig(false),
                 ShouldSendConnectionData = NetworkManager.NetworkConfig.ConnectionApproval,
                 ConnectionData = NetworkManager.NetworkConfig.ConnectionData,
                 MessageVersions = new NativeArray<MessageVersionData>(MessageManager.MessageHandlers.Length, Allocator.Temp)
             };
+
+            if (NetworkManager.CMBServiceConnection)
+            {
+                message.ClientConfig.TickRate = NetworkManager.NetworkConfig.TickRate;
+                message.ClientConfig.EnableSceneManagement = NetworkManager.NetworkConfig.EnableSceneManagement;
+            }
 
             for (int index = 0; index < MessageManager.MessageHandlers.Length; index++)
             {
@@ -739,8 +754,8 @@ namespace Unity.Netcode
                 // Server-side spawning (only if there is a prefab hash or player prefab provided)
                 if (!NetworkManager.DistributedAuthorityMode && response.CreatePlayerObject && (response.PlayerPrefabHash.HasValue || NetworkManager.NetworkConfig.PlayerPrefab != null))
                 {
-                    var playerObject = response.PlayerPrefabHash.HasValue ? NetworkManager.SpawnManager.GetNetworkObjectToSpawn(response.PlayerPrefabHash.Value, ownerClientId, response.Position.GetValueOrDefault(), response.Rotation.GetValueOrDefault())
-                        : NetworkManager.SpawnManager.GetNetworkObjectToSpawn(NetworkManager.NetworkConfig.PlayerPrefab.GetComponent<NetworkObject>().GlobalObjectIdHash, ownerClientId, response.Position.GetValueOrDefault(), response.Rotation.GetValueOrDefault());
+                    var playerObject = response.PlayerPrefabHash.HasValue ? NetworkManager.SpawnManager.GetNetworkObjectToSpawn(response.PlayerPrefabHash.Value, ownerClientId, response.Position ?? null, response.Rotation ?? null)
+                    : NetworkManager.SpawnManager.GetNetworkObjectToSpawn(NetworkManager.NetworkConfig.PlayerPrefab.GetComponent<NetworkObject>().GlobalObjectIdHash, ownerClientId, response.Position ?? null, response.Rotation ?? null);
 
                     // Spawn the player NetworkObject locally
                     NetworkManager.SpawnManager.SpawnNetworkObjectLocally(
@@ -884,7 +899,7 @@ namespace Unity.Netcode
         /// <summary>
         /// Client-Side Spawning in distributed authority mode uses this to spawn the player.
         /// </summary>
-        internal void CreateAndSpawnPlayer(ulong ownerId, Vector3 position = default, Quaternion rotation = default)
+        internal void CreateAndSpawnPlayer(ulong ownerId)
         {
             if (NetworkManager.DistributedAuthorityMode && NetworkManager.AutoSpawnPlayerPrefabClientSide)
             {
@@ -892,7 +907,7 @@ namespace Unity.Netcode
                 if (playerPrefab != null)
                 {
                     var globalObjectIdHash = playerPrefab.GetComponent<NetworkObject>().GlobalObjectIdHash;
-                    var networkObject = NetworkManager.SpawnManager.GetNetworkObjectToSpawn(globalObjectIdHash, ownerId, position, rotation);
+                    var networkObject = NetworkManager.SpawnManager.GetNetworkObjectToSpawn(globalObjectIdHash, ownerId, playerPrefab.transform.position, playerPrefab.transform.rotation);
                     networkObject.IsSceneObject = false;
                     networkObject.SpawnAsPlayerObject(ownerId, networkObject.DestroyWithScene);
                 }

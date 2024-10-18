@@ -2,15 +2,53 @@ using Unity.Collections;
 
 namespace Unity.Netcode
 {
-    internal struct ConnectionRequestMessage : INetworkMessage
+    /// <summary>
+    /// Only used when connecting to the distributed authority service
+    /// </summary>
+    internal struct ClientConfig : INetworkSerializable
     {
-        public int Version => 0;
-
-        public ulong ConfigHash;
-
-        public bool CMBServiceConnection;
+        /// <summary>
+        /// We start at version 1, where anything less than version 1 on the service side
+        /// is not bypass feature compatible.
+        /// </summary>
+        private const int k_BypassFeatureCompatible = 1;
+        public int Version => k_BypassFeatureCompatible;
         public uint TickRate;
         public bool EnableSceneManagement;
+
+        // Only gets deserialized but should never be used unless testing
+        public int RemoteClientVersion;
+
+        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+        {
+            if (serializer.IsWriter)
+            {
+                var writer = serializer.GetFastBufferWriter();
+                BytePacker.WriteValueBitPacked(writer, Version);
+                BytePacker.WriteValueBitPacked(writer, TickRate);
+                writer.WriteValueSafe(EnableSceneManagement);
+            }
+            else
+            {
+                var reader = serializer.GetFastBufferReader();
+                ByteUnpacker.ReadValueBitPacked(reader, out RemoteClientVersion);
+                ByteUnpacker.ReadValueBitPacked(reader, out TickRate);
+                reader.ReadValueSafe(out EnableSceneManagement);
+            }
+        }
+    }
+
+    internal struct ConnectionRequestMessage : INetworkMessage
+    {
+        // This version update is unidirectional (client to service) and version
+        // handling occurs on the service side. This serialized data is never sent
+        // to a host or server.
+        private const int k_SendClientConfigToService = 1;
+        public int Version => k_SendClientConfigToService;
+
+        public ulong ConfigHash;
+        public bool CMBServiceConnection;
+        public ClientConfig ClientConfig;
 
         public byte[] ConnectionData;
 
@@ -36,8 +74,7 @@ namespace Unity.Netcode
 
             if (CMBServiceConnection)
             {
-                writer.WriteValueSafe(TickRate);
-                writer.WriteValueSafe(EnableSceneManagement);
+                writer.WriteNetworkSerializable(ClientConfig);
             }
 
             if (ShouldSendConnectionData)

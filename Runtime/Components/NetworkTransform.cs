@@ -1463,8 +1463,6 @@ namespace Unity.Netcode.Components
         // For test logging purposes
         internal NetworkTransformState SynchronizeState;
 
-        // DANGO-TODO: We will want to remove this when we migrate NetworkTransforms to a dedicated internal message
-        private const ushort k_NetworkTransformStateMagic = 0xf48d;
         #endregion
 
         #region ONSYNCHRONIZE
@@ -1489,19 +1487,10 @@ namespace Unity.Netcode.Components
                 HalfVectorRotation = new HalfVector4(),
                 HalfVectorScale = new HalfVector3(),
                 NetworkDeltaPosition = new NetworkDeltaPosition(),
-
             };
 
             if (serializer.IsWriter)
             {
-                // DANGO-TODO: This magic value is sent to the server in order to identify the network transform.
-                // The server discards it before forwarding synchronization data to other clients.
-                if (NetworkManager.DistributedAuthorityMode && NetworkManager.CMBServiceConnection)
-                {
-                    var writer = serializer.GetFastBufferWriter();
-                    writer.WriteValueSafe(k_NetworkTransformStateMagic);
-                }
-
                 SynchronizeState.IsTeleportingNextFrame = true;
                 var transformToCommit = transform;
                 // If we are using Half Float Precision, then we want to only synchronize the authority's m_HalfPositionState.FullPosition in order for
@@ -3060,12 +3049,44 @@ namespace Unity.Netcode.Components
             base.InternalOnNetworkSessionSynchronized();
         }
 
+        private void ApplyPlayerTransformState()
+        {
+            SynchronizeState.InLocalSpace = InLocalSpace;
+            SynchronizeState.UseInterpolation = Interpolate;
+            SynchronizeState.QuaternionSync = UseQuaternionSynchronization;
+            SynchronizeState.UseHalfFloatPrecision = UseHalfFloatPrecision;
+            SynchronizeState.QuaternionCompression = UseQuaternionCompression;
+            SynchronizeState.UsePositionSlerp = SlerpPosition;
+        }
+
         /// <summary>
         /// For dynamically spawned NetworkObjects, when the non-authority instance's client is already connected and
         /// the SynchronizeState is still pending synchronization then we want to finalize the synchornization at this time.
         /// </summary>
         protected internal override void InternalOnNetworkPostSpawn()
         {
+            // This is a special case for client-server where a server is spawning an owner authoritative NetworkObject but has yet to serialize anything.
+            // When the server detects that:
+            // - We are not in a distributed authority session (DAHost check).
+            // - This is the first/root NetworkTransform.
+            // - We are in owner authoritative mode.
+            // - The NetworkObject is not owned by the server.
+            // - The SynchronizeState.IsSynchronizing is set to false.
+            // Then we want to:
+            // - Force the "IsSynchronizing" flag so the NetworkTransform has its state updated properly and runs through the initialization again.
+            // - Make sure the SynchronizingState is updated to the instantiated prefab's default flags/settings.
+            if (NetworkManager.IsServer && !NetworkManager.DistributedAuthorityMode && m_IsFirstNetworkTransform && !OnIsServerAuthoritative() && !IsOwner && !SynchronizeState.IsSynchronizing)
+            {
+                // Assure the first/root NetworkTransform has the synchronizing flag set so the server runs through the final post initialization steps
+                SynchronizeState.IsSynchronizing = true;
+                // Assure the SynchronizeState matches the initial prefab's values for each associated NetworkTransfrom (this includes root + all children)
+                foreach (var child in NetworkObject.NetworkTransforms)
+                {
+                    child.ApplyPlayerTransformState();
+                }
+                // Now fall through to the final synchronization portion of the spawning for NetworkTransform
+            }
+
             if (!CanCommitToTransform && NetworkManager.IsConnectedClient && SynchronizeState.IsSynchronizing)
             {
                 NonAuthorityFinalizeSynchronization();

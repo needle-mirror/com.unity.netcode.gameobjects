@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
+using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 #endif
 using UnityEngine.SceneManagement;
 using Debug = UnityEngine.Debug;
@@ -17,6 +18,17 @@ namespace Unity.Netcode
     [AddComponentMenu("Netcode/Network Manager", -100)]
     public class NetworkManager : MonoBehaviour, INetworkUpdateSystem
     {
+        /// <summary>
+        /// Subscribe to this static event to get notifications when a <see cref="NetworkManager"/> instance has been instantiated.
+        /// </summary>
+        public static event Action<NetworkManager> OnInstantiated;
+
+        /// <summary>
+        /// Subscribe to this static event to get notifications when a <see cref="NetworkManager"/> instance is being destroyed.
+        /// </summary>
+        public static event Action<NetworkManager> OnDestroying;
+
+
 #if UNITY_EDITOR
         // Inspector view expand/collapse settings for this derived child class
         [HideInInspector]
@@ -874,6 +886,7 @@ namespace Unity.Netcode
 
         internal Override<ushort> PortOverride;
 
+
 #if UNITY_EDITOR
         internal static INetworkManagerHelper NetworkManagerHelper;
 
@@ -898,6 +911,11 @@ namespace Unity.Netcode
         protected virtual void OnValidateComponent()
         {
 
+        }
+
+        private PackageInfo GetPackageInfo(string packageName)
+        {
+            return AssetDatabase.FindAssets("package").Select(AssetDatabase.GUIDToAssetPath).Where(x => AssetDatabase.LoadAssetAtPath<TextAsset>(x) != null).Select(PackageInfo.FindForAssetPath).Where(x => x != null).First(x => x.name == packageName);
         }
 
         internal void OnValidate()
@@ -1030,6 +1048,8 @@ namespace Unity.Netcode
 #if UNITY_EDITOR
             EditorApplication.playModeStateChanged += ModeChanged;
 #endif
+            // Notify we have instantiated a new instance of NetworkManager.
+            OnInstantiated?.Invoke(this);
         }
 
         private void OnEnable()
@@ -1140,9 +1160,6 @@ namespace Unity.Netcode
             NetworkTransformUpdate.Clear();
 
             UpdateTopology();
-
-            //DANGOEXP TODO: Remove this before finalizing the experimental release
-            NetworkConfig.AutoSpawnPlayerPrefabClientSide = DistributedAuthorityMode;
 
             // Make sure the ServerShutdownState is reset when initializing
             if (server)
@@ -1631,6 +1648,9 @@ namespace Unity.Netcode
             ShutdownInternal();
 
             UnityEngine.SceneManagement.SceneManager.sceneUnloaded -= OnSceneUnloaded;
+
+            // Notify we are destroying NetworkManager
+            OnDestroying?.Invoke(this);
 
             if (Singleton == this)
             {

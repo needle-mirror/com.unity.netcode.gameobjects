@@ -72,11 +72,22 @@ namespace Unity.Netcode
                     return;
                 }
             }
+
             foreach (var player in m_PlayerObjects)
             {
-                player.Observers.Add(playerObject.OwnerClientId);
-                playerObject.Observers.Add(player.OwnerClientId);
+                // If the player's SpawnWithObservers is not set then do not add the new player object's owner as an observer.
+                if (player.SpawnWithObservers)
+                {
+                    player.Observers.Add(playerObject.OwnerClientId);
+                }
+
+                // If the new player object's SpawnWithObservers is not set then do not add this player as an observer to the new player object.
+                if (playerObject.SpawnWithObservers)
+                {
+                    playerObject.Observers.Add(player.OwnerClientId);
+                }
             }
+
             m_PlayerObjects.Add(playerObject);
             if (!m_PlayerObjectsTable.ContainsKey(playerObject.OwnerClientId))
             {
@@ -423,8 +434,31 @@ namespace Unity.Netcode
             ChangeOwnership(networkObject, NetworkManager.ServerClientId, true);
         }
 
+        private Dictionary<ulong, float> m_LastChangeInOwnership = new Dictionary<ulong, float>();
+        private const int k_MaximumTickOwnershipChangeMultiplier = 6;
+
         internal void ChangeOwnership(NetworkObject networkObject, ulong clientId, bool isAuthorized, bool isRequestApproval = false)
         {
+            // For client-server:
+            // If ownership changes faster than the latency between the client-server and there are NetworkVariables being updated during ownership changes,
+            // then notify the user they could potentially lose state updates if developer logging is enabled.
+            if (!NetworkManager.DistributedAuthorityMode && m_LastChangeInOwnership.ContainsKey(networkObject.NetworkObjectId) && m_LastChangeInOwnership[networkObject.NetworkObjectId] > Time.realtimeSinceStartup)
+            {
+                var hasNetworkVariables = false;
+                for (int i = 0; i < networkObject.ChildNetworkBehaviours.Count; i++)
+                {
+                    hasNetworkVariables = networkObject.ChildNetworkBehaviours[i].NetworkVariableFields.Count > 0;
+                    if (hasNetworkVariables)
+                    {
+                        break;
+                    }
+                }
+                if (hasNetworkVariables && NetworkManager.LogLevel == LogLevel.Developer)
+                {
+                    NetworkLog.LogWarningServer($"[Rapid Ownership Change Detected][Potential Loss in State] Detected a rapid change in ownership that exceeds a frequency less than {k_MaximumTickOwnershipChangeMultiplier}x the current network tick rate! Provide at least {k_MaximumTickOwnershipChangeMultiplier}x the current network tick rate between ownership changes to avoid NetworkVariable state loss.");
+                }
+            }
+
             if (NetworkManager.DistributedAuthorityMode)
             {
                 // If are not authorized and this is not an approved ownership change, then check to see if we can change ownership
@@ -497,14 +531,20 @@ namespace Unity.Netcode
             // Always notify locally on the server when ownership is lost
             networkObject.InvokeBehaviourOnLostOwnership();
 
-            networkObject.MarkVariablesDirty(true);
-            NetworkManager.BehaviourUpdater.AddForUpdate(networkObject);
-
             // Authority adds entries for all client ownership
             UpdateOwnershipTable(networkObject, networkObject.OwnerClientId);
 
             // Always notify locally on the server when a new owner is assigned
             networkObject.InvokeBehaviourOnGainedOwnership();
+
+            if (networkObject.PreviousOwnerId == NetworkManager.LocalClientId)
+            {
+                // Mark any owner read variables as dirty
+                networkObject.MarkOwnerReadVariablesDirty();
+                // Immediately queue any pending deltas and order the message before the
+                // change in ownership message.
+                NetworkManager.BehaviourUpdater.NetworkBehaviourUpdate(true);
+            }
 
             var size = 0;
             if (NetworkManager.DistributedAuthorityMode)
@@ -569,6 +609,17 @@ namespace Unity.Netcode
             /// This gets called specifically *after* sending the ownership message so any additional messages that need to proceed an ownership
             /// change can be sent from NetworkBehaviours that override the <see cref="NetworkBehaviour.OnOwnershipChanged"></see>
             networkObject.InvokeOwnershipChanged(networkObject.PreviousOwnerId, clientId);
+
+            // Keep track of the ownership change frequency to assure a user is not exceeding changes faster than 2x the current Tick Rate.
+            if (!NetworkManager.DistributedAuthorityMode)
+            {
+                if (!m_LastChangeInOwnership.ContainsKey(networkObject.NetworkObjectId))
+                {
+                    m_LastChangeInOwnership.Add(networkObject.NetworkObjectId, 0.0f);
+                }
+                var tickFrequency = 1.0f / NetworkManager.NetworkConfig.TickRate;
+                m_LastChangeInOwnership[networkObject.NetworkObjectId] = Time.realtimeSinceStartup + (tickFrequency * k_MaximumTickOwnershipChangeMultiplier);
+            }
         }
 
         internal bool HasPrefab(NetworkObject.SceneObject sceneObject)
@@ -695,14 +746,14 @@ namespace Unity.Netcode
         /// Gets the right NetworkObject prefab instance to spawn. If a handler is registered or there is an override assigned to the 
         /// passed in globalObjectIdHash value, then that is what will be instantiated, spawned, and returned.
         /// </summary>
-        internal NetworkObject GetNetworkObjectToSpawn(uint globalObjectIdHash, ulong ownerId, Vector3 position = default, Quaternion rotation = default, bool isScenePlaced = false)
+        internal NetworkObject GetNetworkObjectToSpawn(uint globalObjectIdHash, ulong ownerId, Vector3? position, Quaternion? rotation, bool isScenePlaced = false)
         {
             NetworkObject networkObject = null;
             // If the prefab hash has a registered INetworkPrefabInstanceHandler derived class
             if (NetworkManager.PrefabHandler.ContainsHandler(globalObjectIdHash))
             {
                 // Let the handler spawn the NetworkObject
-                networkObject = NetworkManager.PrefabHandler.HandleNetworkPrefabSpawn(globalObjectIdHash, ownerId, position, rotation);
+                networkObject = NetworkManager.PrefabHandler.HandleNetworkPrefabSpawn(globalObjectIdHash, ownerId, position ?? default, rotation ?? default);
                 networkObject.NetworkManagerOwner = NetworkManager;
             }
             else
@@ -752,8 +803,10 @@ namespace Unity.Netcode
                 }
                 else
                 {
-                    // Create prefab instance
+                    // Create prefab instance while applying any pre-assigned position and rotation values
                     networkObject = UnityEngine.Object.Instantiate(networkPrefabReference).GetComponent<NetworkObject>();
+                    networkObject.transform.position = position ?? networkObject.transform.position;
+                    networkObject.transform.rotation = rotation ?? networkObject.transform.rotation;
                     networkObject.NetworkManagerOwner = NetworkManager;
                     networkObject.PrefabGlobalObjectIdHash = globalObjectIdHash;
                 }

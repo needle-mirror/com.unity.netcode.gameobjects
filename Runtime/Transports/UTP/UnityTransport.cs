@@ -406,6 +406,7 @@ namespace Unity.Netcode.Transports.UTP
 
 #if UTP_TRANSPORT_2_0_ABOVE
         [Obsolete("DebugSimulator is no longer supported and has no effect. Use Network Simulator from the Multiplayer Tools package.", false)]
+        [HideInInspector]
 #endif
         public SimulatorParameters DebugSimulator = new SimulatorParameters
         {
@@ -1206,6 +1207,30 @@ namespace Unity.Netcode.Transports.UTP
             }
 
             return (ulong)ExtractRtt(ParseClientId(clientId));
+        }
+
+        /// <summary>
+        /// Provides the <see cref="NetworkEndpoint"/> for the NGO client identifier specified.
+        /// </summary>
+        /// <remarks>
+        /// - This is only really useful for direct connections.
+        /// - Relay connections and clients connected using a distributed authority network topology will not provide the client's actual endpoint information.
+        /// - For LAN topologies this should work as long as it is a direct connection and not a relay connection.
+        /// </remarks>
+        /// <param name="clientId">NGO client identifier to get endpoint information about.</param>
+        /// <returns><see cref="NetworkEndpoint"/></returns>
+        public NetworkEndpoint GetEndpoint(ulong clientId)
+        {
+            if (m_Driver.IsCreated && NetworkManager != null && NetworkManager.IsListening)
+            {
+                var transportId = NetworkManager.ConnectionManager.ClientIdToTransportId(clientId);
+                var networkConnection = ParseClientId(transportId);
+                if (m_Driver.GetConnectionState(networkConnection) == NetworkConnection.State.Connected)
+                {
+                    return m_Driver.RemoteEndPoint(networkConnection);
+                }
+            }
+            return new NetworkEndpoint();
         }
 
         /// <summary>

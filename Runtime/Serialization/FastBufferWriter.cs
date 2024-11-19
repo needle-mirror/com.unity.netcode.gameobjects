@@ -700,7 +700,7 @@ namespace Unity.Netcode
             }
             if (Handle->Position + size > Handle->AllowedWriteMark)
             {
-                throw new OverflowException($"Attempted to write without first calling {nameof(TryBeginWrite)}()");
+                throw new OverflowException($"Attempted to write without first calling {nameof(TryBeginWrite)}(), Position+Size={Handle->Position + size} > AllowedWriteMark={Handle->AllowedWriteMark}");
             }
 #endif
             UnsafeUtility.MemCpy((Handle->BufferPointer + Handle->Position), value + offset, size);
@@ -729,7 +729,7 @@ namespace Unity.Netcode
 
             if (!TryBeginWriteInternal(size))
             {
-                throw new OverflowException("Writing past the end of the buffer");
+                throw new OverflowException($"Writing past the end of the buffer, size is {size} bytes but remaining capacity is {Handle->Capacity - Handle->Position} bytes");
             }
             UnsafeUtility.MemCpy((Handle->BufferPointer + Handle->Position), value + offset, size);
             Handle->Position += size;
@@ -772,7 +772,11 @@ namespace Unity.Netcode
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void WriteBytes(NativeList<byte> value, int size = -1, int offset = 0)
         {
+#if UTP_TRANSPORT_2_0_ABOVE
+            byte* ptr = value.GetUnsafePtr();
+#else
             byte* ptr = (byte*)value.GetUnsafePtr();
+#endif
             WriteBytes(ptr, size == -1 ? value.Length : size, offset);
         }
 
@@ -816,7 +820,11 @@ namespace Unity.Netcode
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void WriteBytesSafe(NativeList<byte> value, int size = -1, int offset = 0)
         {
+#if UTP_TRANSPORT_2_0_ABOVE
+            byte* ptr = value.GetUnsafePtr();
+#else
             byte* ptr = (byte*)value.GetUnsafePtr();
+#endif
             WriteBytesSafe(ptr, size == -1 ? value.Length : size, offset);
         }
 
@@ -985,7 +993,12 @@ namespace Unity.Netcode
         internal unsafe void WriteUnmanaged<T>(NativeList<T> value) where T : unmanaged
         {
             WriteUnmanaged(value.Length);
+
+#if UTP_TRANSPORT_2_0_ABOVE
+            var ptr = value.GetUnsafePtr();
+#else
             var ptr = (T*)value.GetUnsafePtr();
+#endif
             {
                 byte* bytes = (byte*)ptr;
                 WriteBytes(bytes, sizeof(T) * value.Length);
@@ -995,7 +1008,11 @@ namespace Unity.Netcode
         internal unsafe void WriteUnmanagedSafe<T>(NativeList<T> value) where T : unmanaged
         {
             WriteUnmanagedSafe(value.Length);
+#if UTP_TRANSPORT_2_0_ABOVE
+            var ptr = value.GetUnsafePtr();
+#else
             var ptr = (T*)value.GetUnsafePtr();
+#endif
             {
                 byte* bytes = (byte*)ptr;
                 WriteBytesSafe(bytes, sizeof(T) * value.Length);
@@ -1193,7 +1210,11 @@ namespace Unity.Netcode
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void WriteValueSafe<T>(NativeHashSet<T> value) where T : unmanaged, IEquatable<T>
         {
+#if UTP_TRANSPORT_2_0_ABOVE
+            WriteUnmanagedSafe(value.Count);
+#else
             WriteUnmanagedSafe(value.Count());
+#endif
             foreach (var item in value)
             {
                 var iReffable = item;
@@ -1206,7 +1227,11 @@ namespace Unity.Netcode
             where TKey : unmanaged, IEquatable<TKey>
             where TVal : unmanaged
         {
+#if UTP_TRANSPORT_2_0_ABOVE
+            WriteUnmanagedSafe(value.Count);
+#else
             WriteUnmanagedSafe(value.Count());
+#endif
             foreach (var item in value)
             {
                 (var key, var val) = (item.Key, item.Value);

@@ -1081,14 +1081,19 @@ namespace Unity.Netcode
             }
             else
             {
-                var message = new SceneEventMessage
+                // Send to each individual client to assure only the in-scene placed NetworkObjects being observed by the client
+                // is serialized
+                foreach (var clientId in targetClientIds)
                 {
-                    EventData = sceneEvent,
-                };
-                var size = NetworkManager.ConnectionManager.SendMessage(ref message, k_DeliveryType, targetClientIds);
-                NetworkManager.NetworkMetrics.TrackSceneEventSent(targetClientIds, (uint)SceneEventDataStore[sceneEventId].SceneEventType, SceneNameFromHash(SceneEventDataStore[sceneEventId].SceneHash), size);
+                    sceneEvent.TargetClientId = clientId;
+                    var message = new SceneEventMessage
+                    {
+                        EventData = sceneEvent,
+                    };
+                    var size = NetworkManager.ConnectionManager.SendMessage(ref message, k_DeliveryType, clientId);
+                    NetworkManager.NetworkMetrics.TrackSceneEventSent(clientId, (uint)sceneEvent.SceneEventType, SceneNameFromHash(sceneEvent.SceneHash), size);
+                }
             }
-
         }
 
         /// <summary>
@@ -1898,10 +1903,12 @@ namespace Unity.Netcode
             SendSceneEventData(sceneEventData.SceneEventId, NetworkManager.ConnectedClientsIds.Where(c => c != sessionOwner).ToArray());
 
             m_IsSceneEventActive = false;
+
+            sceneEventData.SceneEventType = SceneEventType.LoadComplete;
             //First, notify local server that the scene was loaded
             OnSceneEvent?.Invoke(new SceneEvent()
             {
-                SceneEventType = SceneEventType.LoadComplete,
+                SceneEventType = sceneEventData.SceneEventType,
                 LoadSceneMode = sceneEventData.LoadSceneMode,
                 SceneName = SceneNameFromHash(sceneEventData.SceneHash),
                 ClientId = NetworkManager.LocalClientId,

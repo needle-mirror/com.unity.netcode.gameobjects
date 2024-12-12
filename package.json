@@ -2,23 +2,11 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
-    "com.unity.transport": "2.3.0"
-  },
-  "_upm": {
-    "changelog": "### Added\n\n- Added ability to edit the `NetworkConfig.AutoSpawnPlayerPrefabClientSide` within the inspector view. (#3097)\n- Added `IContactEventHandlerWithInfo` that derives from `IContactEventHandler` that can be updated per frame to provide `ContactEventHandlerInfo` information to the `RigidbodyContactEventManager` when processing collisions. (#3094)\n  - `ContactEventHandlerInfo.ProvideNonRigidBodyContactEvents`: When set to true, non-`Rigidbody` collisions with the registered `Rigidbody` will generate contact event notifications. (#3094)\n  - `ContactEventHandlerInfo.HasContactEventPriority`: When set to true, the `Rigidbody` will be prioritized as the instance that generates the event if the `Rigidbody` colliding does not have priority. (#3094)\n- Added a static `NetworkManager.OnInstantiated` event notification to be able to track when a new `NetworkManager` instance has been instantiated. (#3088)\n- Added a static `NetworkManager.OnDestroying` event notification to be able to track when an existing `NetworkManager` instance is being destroyed. (#3088)\n\n### Fixed\n\n- Fixed issue where `NetworkPrefabProcessor` would not mark the prefab list as dirty and prevent saving the `DefaultNetworkPrefabs` asset when only imports or only deletes were detected.(#3103)\n- Fixed an issue where nested `NetworkTransform` components in owner authoritative mode cleared their initial settings on the server, causing improper synchronization. (#3099)\n- Fixed issue with service not getting synchronized with in-scene placed `NetworkObject` instances when a session owner starts a `SceneEventType.Load` event. (#3096)\n- Fixed issue with the in-scene network prefab instance update menu tool where it was not properly updating scenes when invoked on the root prefab instance. (#3092)\n- Fixed an issue where newly synchronizing clients would always receive current `NetworkVariable` values, potentially causing issues with collections if there were pending updates. Now, pending state updates serialize previous values to avoid duplicates on new clients. (#3081)\n- Fixed issue where changing ownership would mark every `NetworkVariable` dirty. Now, it will only mark any `NetworkVariable` with owner read permissions as dirty and will send/flush any pending updates to all clients prior to sending the change in ownership message. (#3081)\n- Fixed an issue where transferring ownership of `NetworkVariable` collections didn't update the new owner’s previous value, causing the last added value to be detected as a change during additions or removals. (#3081)\n- Fixed issue where a client (or server) with no write permissions for a `NetworkVariable` using a standard .NET collection type could still modify the collection which could cause various issues depending upon the modification and collection type. (#3081)\n- Fixed issue where applying the position and/or rotation to the `NetworkManager.ConnectionApprovalResponse` when connection approval and auto-spawn player prefab were enabled would not apply the position and/or rotation when the player prefab was instantiated. (#3078)\n- Fixed issue where `NetworkObject.SpawnWithObservers` was not being honored when spawning the player prefab. (#3077)\n- Fixed issue with the client count not being correct on the host or server side when a client disconnects itself from a session. (#3075)\n\n### Changed\n\n- Changed `NetworkConfig.AutoSpawnPlayerPrefabClientSide` is no longer automatically set when starting `NetworkManager`. (#3097)\n- Updated `NetworkVariableDeltaMessage` so the server now forwards delta state updates from clients immediately, instead of waiting until the end of the frame or the next network tick. (#3081)"
-  },
-  "upmCi": {
-    "footprint": "8331c76150e539e36659d8b7be3ba0fb6d21027a"
-  },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.1/manual/index.html",
-  "repository": {
-    "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
-    "type": "git",
-    "revision": "264b30d176dd71fcedd022a8d6f4d59a2e3922bc"
+    "com.unity.transport": "2.4.0"
   },
   "samples": [
     {
@@ -26,5 +14,17 @@
       "description": "A lightweight sample to get started",
       "path": "Samples~/Bootstrap"
     }
-  ]
+  ],
+  "_upm": {
+    "changelog": "### Added\n\n- Added `NetworkObject.OwnershipStatus.SessionOwner` to allow Network Objects to be distributable and only owned by the Session Owner. This flag will override all other `OwnershipStatus` flags. (#3175)\n- Added `UnityTransport.GetEndpoint` method to provide a way to obtain `NetworkEndpoint` information of a connection via client identifier. (#3130)\n- Added `NetworkTransport.OnEarlyUpdate` and `NetworkTransport.OnPostLateUpdate` methods to provide more control over handling transport related events at the start and end of each frame. (#3113)\n\n### Fixed\n\n- Fixed issue where the server, host, or session owner would not populate the in-scene place `NetworkObject` table if the scene was loaded prior to starting the `NetworkManager`. (#3177)\n- Fixed issue where the `NetworkObjectIdHash` value could be incorrect when entering play mode while still in prefab edit mode with pending changes and using MPPM. (#3162)\n- Fixed issue where a sever only `NetworkManager` instance would spawn the actual `NetworkPrefab`'s `GameObject` as opposed to creating an instance of it. (#3160)\n- Fixed issue where only the session owner (as opposed to all clients) would handle spawning prefab overrides properly when using a distributed authority network topology. (#3160)\n- Fixed issue where an exception was thrown when calling `NetworkManager.Shutdown` after calling `UnityTransport.Shutdown`. (#3118)\n- Fixed issue where `NetworkList` properties on in-scene placed `NetworkObject`s could cause small memory leaks when entering playmode. (#3147)\n- Fixed in-scene `NertworkObject` synchronization issue when loading a scene with currently connected clients connected to a session created by a `NetworkManager` started as a server (i.e. not as a host). (#3133)\n- Fixed issue where a `NetworkManager` started as a server would not add itself as an observer to in-scene placed `NetworkObject`s instantiated and spawned by a scene loading event. (#3133)\n- Fixed issue where spawning a player using `NetworkObject.InstantiateAndSpawn` or `NetworkSpawnManager.InstantiateAndSpawn` would not update the `NetworkSpawnManager.PlayerObjects` or assign the newly spawned player to the `NetworkClient.PlayerObject`. (#3122)\n- Fixed issue where queued UnitTransport (NetworkTransport) message batches were being sent on the next frame. They are now sent at the end of the frame during `PostLateUpdate`.  (#3113)\n- Fixed issue where `NotOwnerRpcTarget` or `OwnerRpcTarget` were not using their replacements `NotAuthorityRpcTarget` and `AuthorityRpcTarget` which would invoke a warning. (#3111)\n- Fixed issue where client is removed as an observer from spawned objects when their player instance is despawned. (#3110)\n- Fixed issue where `NetworkAnimator` would statically allocate write buffer space for `Animator` parameters that could cause a write error if the number of parameters exceeded the space allocated. (#3108)\n\n### Changed\n\n- In-scene placed `NetworkObject`s have been made distributable when balancing object distribution after a connection event. (#3175)\n- Optimised `NetworkVariable` and `NetworkTransform` related packets when in Distributed Authority mode.\n- The Debug Simulator section of the Unity Transport component was removed. This section was not functional anymore and users are now recommended to use the more featureful [Network Simulator](https://docs-multiplayer.unity3d.com/tools/current/tools-network-simulator/) tool from the Multiplayer Tools package instead. (#3121)"
+  },
+  "upmCi": {
+    "footprint": "9d95aefc0dccf8f9dc0bcf0017dee417d7d31f56"
+  },
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.2/manual/index.html",
+  "repository": {
+    "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
+    "type": "git",
+    "revision": "ba490651a8c6cf2f98c2bbacef8b24a1170860b3"
+  }
 }

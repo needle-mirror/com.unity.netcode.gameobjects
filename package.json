@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- It is now possible to control which port clients will bind to using the `UnityTransport.ConnectionData.ClientBindPort` field. If not set, clients will bind to an ephemeral port (same as before this change). (#3764)\n- Added a flag to override command-line arguments (port and ip) in `SetConnectionData`. (#3760)\n- Added a command-line singleton to parse environment command-line arguments. (#3760)\n- Added `NetworkAnimator.AuthorityMode` which allows you to select whether the `NetworkAnimator` will use a server or owner authority model for state updates (like `NetworkTransform`). (#3586)\n- Added the ability to select which `Animator` parameters the authority `NetworkAnimator` instance should synchronize. This can be done via the inspector view interface or during runtime via `NetworkAnimator.EnableParameterSynchronization`. (#3586)\n\n### Changed\n\n- Improve performance of `ParentSyncMessage`. (#3814)\n- Improve performance of `DestroyObjectMessage`. (#3801)\n- Improve performance of `CreateObjectMessage`. (#3800)\n- First pass of CoreCLR engine API changes. (#3799)\n- Changed when a server is disconnecting a client with a reason it now defers the complete transport disconnect sequence until the end of the frame after the server's transport has sent all pending outbound messages. (#3786)\n- Improve performance of `NetworkTransformState`. (#3770)\n- Changed NetworkAnimator to use the `RpcAttribute` along with the appropriate `SendTo` parameter. (#3586)\n\n### Fixed\n\n- Ensure `NetworkBehaviour.IsSessionOwner` is correctly set when a new session owner is promoted. (#3817)\n- Fixed issue where spawning a player in distributed authority mode via a client, typically session owner, other than the newly connected client and scene management is disabled then the already spawned players will not properly get synchronized by each owning client due to the newly connected client's identifier already being added prior to synchronization. (#3816)\n- Reset extended ownership flags on `NetworkObject` despawn. (#3817)\n- Fixed issues with the \"Client-server quickstart for Netcode for GameObjects\" script having static methods and properties. (#3787)\n- Fixed issue where a warning message was being logged upon a client disconnecting from a server when the log level is set to developer. (#3786)\n- Fixed issue where the server or host would no longer have access to the transport id to client id table when processing a transport level client disconnect event. (#3786)\n- Fixed issue where invoking an RPC, on another `NetworkBehaviour` associated with the same `NetworkObject` that is ordered before the `NetworkBehaviour` invoking the RPC, during `OnNetworkSpawn` could throw an exception if scene management is disabled. (#3782)\n- Fixed issue where the `Axis to Synchronize` toggles didn't work with multi object editing in `NetworkTransform`. (#3781)\n- Fixed issue where using the dedicated server package would override all attempts to change the port by code. (#3760)\n- Fixed issue with authority animator instance sending itself RPCs. (#3586)"
+    "changelog": "### Fixed\n\n- Fixed issue when using a client-server topology where a `NetworkList` with owner write permissions was resetting sent time and dirty flags after having been spawned on owning clients that were not the spawn authority. (#3850)"
   },
   "upmCi": {
-    "footprint": "514fb83f14759e50bfb01115394438ef4b86ed76"
+    "footprint": "bfa5f7d3b335b75851fd4104ca142f7bf52aec11"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.8/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "54cf96d99ecabc1a28796a84f34d4435c1d37a90"
+    "revision": "b2e11c30b8a865361d9b4b4af751bf611036f253"
   }
 }

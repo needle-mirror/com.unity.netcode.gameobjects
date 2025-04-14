@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- Added `NetworkManager.OnPreShutdown` which is called before the NetworkManager cleans up and shuts down. (#3366)\n- Added `Lerp` interpolation type that still uses a lerp approach but uses the new buffer consumption logic. (#3355)\n- Added property to enable or disable lerp smoothing for position, rotation, and scale interpolators. (#3355)\n- Added `NetworkTransform.InterpolationBufferTickOffset` static property to provide users with a way to increase or decrease the time marker where interpolators will pull state update from the queue. (#3355)\n- Added interpolator types as an inspector view selection for position, rotation, and scale. (#3337)\n- Added a new smooth dampening interpolator type that provides a nice balance between precision and smoothing results. (#3337)\n- Added `NetworkTimeSystem.TickLatency` property that provides the average latency of a client. (#3337)\n- Added `FastBufferReader(ArraySegment<byte> buffer, Allocator copyAllocator)` constructor that uses the `ArraySegment.Offset` as the `FastBufferReader` offset and the `ArraySegment.Count` as the `FastBufferReader` length. (#3321)\n- Added `FastBufferReader(ArraySegment<byte> buffer, Allocator copyAllocator, int length = -1)` constructor that uses the `ArraySegment.Offset` as the `FastBufferReader` offset. (#3321)\n\n### Fixed\n\n- Fixed issue where in-scene placed `NetworkObjects` could fail to synchronize its transform properly (especially without a `NetworkTransform`) if their parenting changes from the default when the scene is loaded and if the same scene remains loaded between network sessions while the parenting is completely different from the original hierarchy. (#3387)\n- Fixed an issue in `UnityTransport` where the transport would accept sends on invalid connections, leading to a useless memory allocation and confusing error message. (#3382)\n- Fixed issue where the time delta that interpolators used would not be properly updated during multiple fixed update invocations within the same player loop frame. (#3355)\n- Fixed issue when using a distributed authority network topology and many clients attempt to connect simultaneously the session owner could max-out the maximum in-flight reliable messages allowed, start dropping packets, and some of the connecting clients would fail to fully synchronize. (#3350)\n- Fixed issue when using a distributed authority network topology and scene management was disabled clients would not be able to spawn any new network prefab instances until synchronization was complete. (#3350)\n- Fixed issue where an owner that changes ownership, when using a distributed authority network topology, could yield identical previous and current owner identifiers. This could also cause `NetworkTransform` to fail to change ownership which would leave the previous owner still subscribed to network tick events. (#3347)\n- Fixed issue where the `MaximumInterpolationTime` could not be modified from within the inspector view or runtime. (#3337)\n- Fixed `ChangeOwnership` changing ownership to clients that are not observers. This also happened with automated object distribution. (#3323)\n- Fixed issue where `AnticipatedNetworkVariable` previous value returned by `AnticipatedNetworkVariable.OnAuthoritativeValueChanged` is updated correctly on the non-authoritative side. (#3306)\n- Fixed `OnClientConnectedCallback` passing incorrect `clientId` when scene management is disabled. (#3312)\n- Fixed issue where the `NetworkObject.Ownership` custom editor did not take the default \"Everything\" flag into consideration. (#3305)\n- Fixed DestroyObject flow on non-authority game clients. (#3291)\n- Fixed exception being thrown when a `GameObject` with an associated `NetworkTransform` is disabled. (#3243)\n- Fixed issue where the scene migration synchronization table was not cleaned up if the `GameObject` of a `NetworkObject` is destroyed before it should have been. (#3230)\n- Fixed issue where the scene migration synchronization table was not cleaned up upon `NetworkManager` shutting down. (#3230)\n- Fixed `NetworkObject.DeferDespawn` to respect the `Destroy"
+    "changelog": "### Fixed\n\n- Fixed issue where during a `NetworkObject`'s spawn if you instantiated, spawned, and parented another network prefab under the currently spawning `NetworkObject` the parenting message would not properly defer until the parent `NetworkObject` was spawned. (#3401)"
   },
   "upmCi": {
-    "footprint": "971a3d1173be1c7e231881eccc18f6751eb7a2a2"
+    "footprint": "f637b44afe18b804a4a8c73eac7b867aa781d7ee"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.3/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "91fdad0d5a57c12e18599de07d6961a320f977b6"
+    "revision": "bc4653727fe286e09176aec715e1f52d17e24685"
   }
 }

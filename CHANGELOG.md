@@ -6,14 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [1.13.0] - 2025-04-29
+
+### Added
+
+- Added `NetworkManager.OnPreShutdown` which is called before the NetworkManager cleans up and shuts down. (#3358)
+- Added `FastBufferReader(ArraySegment<byte> buffer, Allocator copyAllocator)` constructor that uses the `ArraySegment.Offset` as the `FastBufferReader` offset and the `ArraySegment.Count` as the `FastBufferReader` length. (#3320)
+- Added `FastBufferReader(ArraySegment<byte> buffer, Allocator copyAllocator, int length = -1)` constructor that uses the `ArraySegment.Offset` as the `FastBufferReader` offset. (#3320)
+
+### Fixed
+
+- Fixed memory leaks when domain reload is disabled. (#3428)
+- Fixed issues with the `NetworkBehaviour` and `NetworkVariable` length safety checks. (#3415)
+- Fixed issue where during a `NetworkObject`'s spawn if you instantiated, spawned, and parented another network prefab under the currently spawning `NetworkObject` the parenting message would not properly defer until the parent `NetworkObject` was spawned. (#3403)
+- Fixed issue where in-scene placed `NetworkObjects` could fail to synchronize its transform properly (especially without a `NetworkTransform`) if their parenting changes from the default when the scene is loaded and if the same scene remains loaded between network sessions while the parenting is completely different from the original hierarchy. (#3388)
+- Fixed an issue in `UnityTransport` where the transport would accept sends on invalid connections, leading to a useless memory allocation and confusing error message. (#3383)
+- Fixed issue where `NetworkAnimator` would log an error if there was no destination transition information. (#3384)
+- Fixed initial `NetworkTransform` spawn, ensure it uses world space. (#3361)
+- Fixed issue where `AnticipatedNetworkVariable` previous value returned by `AnticipatedNetworkVariable.OnAuthoritativeValueChanged` is updated correctly on the non-authoritative side. (#3322)
+
+### Changed
+
+- Changed the scene loading event serialization order for in-scene placed `NetworkObject`s to be based on their parent-child hierarchy. (#3388)
+
 ## [1.12.2] - 2025-01-17
 
 ### Fixed
 
+- Fixed issue where `NetworkVariableBase` derived classes were not being re-initialized if the associated `NetworkObject` instance was not destroyed and re-spawned. (#3217)
 - Fixed issue where a spawned `NetworkObject` that was registered with a prefab handler and owned by a client would invoke destroy more than once on the host-server side if the client disconnected while the `NetworkObject` was still spawned. (#3202)
 - Fixed issue where `NetworkRigidBody2D` was still using the deprecated `isKinematic` property in Unity versions 2022.3 and newer. (#3199)
 - Fixed issue where an exception was thrown when calling `NetworkManager.Shutdown` after calling `UnityTransport.Shutdown`. (#3118)
 
+
+- Changed the `NetworkTimeSystem.Sync` method to use half RTT to calculate the desired local time offset as opposed to the full RTT. (#3206)
 
 ## [1.12.0] - 2024-11-19
 

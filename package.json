@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "1.12.2",
+  "version": "1.13.0",
   "unity": "2021.3",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.10.1",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Fixed\n\n- Fixed issue where a spawned `NetworkObject` that was registered with a prefab handler and owned by a client would invoke destroy more than once on the host-server side if the client disconnected while the `NetworkObject` was still spawned. (#3202)\n- Fixed issue where `NetworkRigidBody2D` was still using the deprecated `isKinematic` property in Unity versions 2022.3 and newer. (#3199)\n- Fixed issue where an exception was thrown when calling `NetworkManager.Shutdown` after calling `UnityTransport.Shutdown`. (#3118)"
+    "changelog": "### Added\n\n- Added `NetworkManager.OnPreShutdown` which is called before the NetworkManager cleans up and shuts down. (#3358)\n- Added `FastBufferReader(ArraySegment<byte> buffer, Allocator copyAllocator)` constructor that uses the `ArraySegment.Offset` as the `FastBufferReader` offset and the `ArraySegment.Count` as the `FastBufferReader` length. (#3320)\n- Added `FastBufferReader(ArraySegment<byte> buffer, Allocator copyAllocator, int length = -1)` constructor that uses the `ArraySegment.Offset` as the `FastBufferReader` offset. (#3320)\n\n### Fixed\n\n- Fixed memory leaks when domain reload is disabled. (#3428)\n- Fixed issues with the `NetworkBehaviour` and `NetworkVariable` length safety checks. (#3415)\n- Fixed issue where during a `NetworkObject`'s spawn if you instantiated, spawned, and parented another network prefab under the currently spawning `NetworkObject` the parenting message would not properly defer until the parent `NetworkObject` was spawned. (#3403)\n- Fixed issue where in-scene placed `NetworkObjects` could fail to synchronize its transform properly (especially without a `NetworkTransform`) if their parenting changes from the default when the scene is loaded and if the same scene remains loaded between network sessions while the parenting is completely different from the original hierarchy. (#3388)\n- Fixed an issue in `UnityTransport` where the transport would accept sends on invalid connections, leading to a useless memory allocation and confusing error message. (#3383)\n- Fixed issue where `NetworkAnimator` would log an error if there was no destination transition information. (#3384)\n- Fixed initial `NetworkTransform` spawn, ensure it uses world space. (#3361)\n- Fixed issue where `AnticipatedNetworkVariable` previous value returned by `AnticipatedNetworkVariable.OnAuthoritativeValueChanged` is updated correctly on the non-authoritative side. (#3322)\n\n### Changed\n\n- Changed the scene loading event serialization order for in-scene placed `NetworkObject`s to be based on their parent-child hierarchy. (#3388)"
   },
   "upmCi": {
-    "footprint": "9b1b1cf7df6183d0a50f8c54eb6d4f68f31f6821"
+    "footprint": "346173c102875af045b42a01e604db2835a75d88"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@1.12/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@1.13/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "ed700c01fb713e76f11aa85b4cd73cac905010b6"
+    "revision": "f53fd6407d8829ade55605a1696ab247d6189f9d"
   }
 }

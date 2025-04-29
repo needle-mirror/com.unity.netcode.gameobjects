@@ -478,17 +478,27 @@ namespace Unity.Netcode
         public event Action OnClientStarted = null;
 
         /// <summary>
+        /// Subscribe to this event to get notifications before a <see cref="NetworkManager"/> instance is being destroyed.
+        /// This is useful if you want to use the state of anything the NetworkManager cleans up during its shutdown.
+        /// </summary>
+        public event Action OnPreShutdown = null;
+
+        /// <summary>
         /// This callback is invoked once the local server is stopped.
         /// </summary>
-        /// <remarks>The bool parameter will be set to true when stopping a host instance and false when stopping a server instance.</remarks>
-        /// <param name="arg1">The first parameter of this event will be set to <see cref="true"/> when stopping a host instance and <see cref="false"/> when stopping a server instance.</param>
+        /// <remarks>
+        /// The bool parameter will be set to true when stopping a host instance and false when stopping a server instance.
+        /// The first parameter of this event will be set to <see cref="true"/> when stopping a host instance and <see cref="false"/> when stopping a server instance.
+        /// </remarks>
         public event Action<bool> OnServerStopped = null;
 
         /// <summary>
         /// The callback to invoke once the local client stops.
         /// </summary>
-        /// <remarks>The bool parameter will be set to true when stopping a host client and false when stopping a standard client instance.</remarks>
-        /// <param name="arg1">The first parameter of this event will be set to <see cref="true"/> when stopping the host client and <see cref="false"/> when stopping a standard client instance.</param>
+        /// <remarks>
+        /// The bool parameter will be set to true when stopping a host client and false when stopping a standard client instance.
+        /// The first parameter of this event will be set to <see cref="true"/> when stopping the host client and <see cref="false"/> when stopping a standard client instance.
+        /// </remarks>
         public event Action<bool> OnClientStopped = null;
 
         /// <summary>
@@ -757,14 +767,14 @@ namespace Unity.Netcode
         /// <summary>
         /// <see cref="NetworkPrefabHandler.AddNetworkPrefab(GameObject)"/>
         /// </summary>
-        /// <param name="prefab"></param>
-        /// <exception cref="Exception"></exception>
+        /// <param name="prefab">The GameObject prefab to be registered. Must not be null and must have a NetworkObject component.</param>
+        /// <exception cref="Exception">Thrown when the prefab is null or missing required components.</exception>
         public void AddNetworkPrefab(GameObject prefab) => PrefabHandler.AddNetworkPrefab(prefab);
 
         /// <summary>
         /// <see cref="NetworkPrefabHandler.RemoveNetworkPrefab(GameObject)"/>
         /// </summary>
-        /// <param name="prefab"></param>
+        /// <param name="prefab">The GameObject prefab to be unregistered. Must not be null and must have been previously registered.</param>
         public void RemoveNetworkPrefab(GameObject prefab) => PrefabHandler.RemoveNetworkPrefab(prefab);
 
         /// <summary>
@@ -776,7 +786,6 @@ namespace Unity.Netcode
         /// and thus should be large enough to ensure it can hold each message type.
         /// This value defaults to 1296.
         /// </summary>
-        /// <param name="size"></param>
         public int MaximumTransmissionUnitSize
         {
             set => MessageManager.NonFragmentedMessageMaxSize = value & ~7; // Round down to nearest word aligned size
@@ -788,8 +797,8 @@ namespace Unity.Netcode
         /// This determines the maximum size of a message batch that can be sent to that client.
         /// If not set for any given client, <see cref="MaximumTransmissionUnitSize"/> will be used instead.
         /// </summary>
-        /// <param name="clientId"></param>
-        /// <param name="size"></param>
+        /// <param name="clientId">The unique identifier of the client to set the MTU for.</param>
+        /// <param name="size">The maximum transmission unit size in bytes for this specific client.</param>
         public void SetPeerMTU(ulong clientId, int size)
         {
             MessageManager.PeerMTUSizes[clientId] = size;
@@ -799,8 +808,8 @@ namespace Unity.Netcode
         /// Queries the current MTU size for a client.
         /// If no MTU has been set for that client, will return <see cref="MaximumTransmissionUnitSize"/>
         /// </summary>
-        /// <param name="clientId"></param>
-        /// <returns></returns>
+        /// <param name="clientId">The unique identifier of the client to query.</param>
+        /// <returns>The MTU size in bytes for the specified client. If no MTU has been set for that client, returns <see cref="MaximumTransmissionUnitSize"/>.</returns>
         public int GetPeerMTU(ulong clientId)
         {
             if (MessageManager.PeerMTUSizes.TryGetValue(clientId, out var ret))
@@ -815,7 +824,6 @@ namespace Unity.Netcode
         /// Sets the maximum size of a message (or message batch) passed through the transport with the ReliableFragmented delivery.
         /// Warning: setting this value too low may result in the SDK becoming non-functional with projects that have a large number of NetworkBehaviours or NetworkVariables, as the SDK relies on the transport's ability to fragment some messages when they grow beyond the MTU size.
         /// </summary>
-        /// <param name="size"></param>
         public int MaximumFragmentedMessageSize
         {
             set => MessageManager.FragmentedMessageMaxSize = value;
@@ -1196,6 +1204,8 @@ namespace Unity.Netcode
                 NetworkLog.LogInfo(nameof(ShutdownInternal));
             }
 
+            OnPreShutdown?.Invoke();
+
             this.UnregisterAllNetworkUpdates();
 
             // Everything is shutdown in the order of their dependencies
@@ -1293,6 +1303,9 @@ namespace Unity.Netcode
             {
                 Singleton = null;
             }
+#if UNITY_EDITOR
+            EditorApplication.playModeStateChanged -= ModeChanged;
+#endif            
         }
 
         // Command line options

@@ -34,7 +34,7 @@ namespace Unity.Netcode
         internal uint PrefabGlobalObjectIdHash;
 
         /// <summary>
-        /// This is the source prefab of an in-scene placed NetworkObject. This is not set for in-scene 
+        /// This is the source prefab of an in-scene placed NetworkObject. This is not set for in-scene
         /// placd NetworkObjects that are not prefab instances, dynamically spawned prefab instances,
         /// or for network prefab assets.
         /// </summary>
@@ -172,8 +172,8 @@ namespace Unity.Netcode
         }
 
         /// <summary>
-        /// This checks to see if this NetworkObject is an in-scene placed prefab instance. If so it will 
-        /// automatically find the source prefab asset's GlobalObjectIdHash value, assign it to 
+        /// This checks to see if this NetworkObject is an in-scene placed prefab instance. If so it will
+        /// automatically find the source prefab asset's GlobalObjectIdHash value, assign it to
         /// InScenePlacedSourceGlobalObjectIdHash and mark this as being in-scene placed.
         /// </summary>
         /// <remarks>
@@ -185,15 +185,18 @@ namespace Unity.Netcode
         /// </remarks>
         private void CheckForInScenePlaced()
         {
-            if (PrefabUtility.IsPartOfAnyPrefab(this) && !IsEditingPrefab() && gameObject.scene.IsValid() && gameObject.scene.isLoaded && gameObject.scene.buildIndex >= 0)
+            if (gameObject.scene.IsValid() && gameObject.scene.isLoaded && gameObject.scene.buildIndex >= 0)
             {
-                var prefab = PrefabUtility.GetCorrespondingObjectFromSource(gameObject);
-                var assetPath = AssetDatabase.GetAssetPath(prefab);
-                var sourceAsset = AssetDatabase.LoadAssetAtPath<NetworkObject>(assetPath);
-                if (sourceAsset != null && sourceAsset.GlobalObjectIdHash != 0 && InScenePlacedSourceGlobalObjectIdHash != sourceAsset.GlobalObjectIdHash)
+                if (PrefabUtility.IsPartOfAnyPrefab(this))
                 {
-                    InScenePlacedSourceGlobalObjectIdHash = sourceAsset.GlobalObjectIdHash;
-                    EditorUtility.SetDirty(this);
+                    var prefab = PrefabUtility.GetCorrespondingObjectFromSource(gameObject);
+                    var assetPath = AssetDatabase.GetAssetPath(prefab);
+                    var sourceAsset = AssetDatabase.LoadAssetAtPath<NetworkObject>(assetPath);
+                    if (sourceAsset != null && sourceAsset.GlobalObjectIdHash != 0 && InScenePlacedSourceGlobalObjectIdHash != sourceAsset.GlobalObjectIdHash)
+                    {
+                        InScenePlacedSourceGlobalObjectIdHash = sourceAsset.GlobalObjectIdHash;
+                        EditorUtility.SetDirty(this);
+                    }
                 }
                 IsSceneObject = true;
             }
@@ -1060,7 +1063,7 @@ namespace Unity.Netcode
         /// This is a more convenient way to remove the parent without  having to cast the null value to either <see cref="GameObject"/> or <see cref="NetworkObject"/>
         /// </remarks>
         /// <param name="worldPositionStays">If true, the parent-relative position, scale and rotation are modified such that the object keeps the same world space position, rotation and scale as before.</param>
-        /// <returns></returns>
+        /// <returns>True if the parent was successfully removed, false if the operation failed or if there was no parent to remove.</returns>
         public bool TryRemoveParent(bool worldPositionStays = true)
         {
             return TrySetParent((NetworkObject)null, worldPositionStays);
@@ -1241,7 +1244,7 @@ namespace Unity.Netcode
         // we call CheckOrphanChildren() method and quickly iterate over OrphanChildren set and see if we can reparent/adopt one.
         internal static HashSet<NetworkObject> OrphanChildren = new HashSet<NetworkObject>();
 
-        internal bool ApplyNetworkParenting(bool removeParent = false, bool ignoreNotSpawned = false, bool orphanedChildPass = false)
+        internal bool ApplyNetworkParenting(bool removeParent = false, bool ignoreNotSpawned = false, bool orphanedChildPass = false, bool enableNotification = true)
         {
             if (!AutoObjectParentSync)
             {
@@ -1314,7 +1317,10 @@ namespace Unity.Netcode
                 // to WorldPositionStays which can cause scaling issues if the parent's
                 // scale is not the default (Vetctor3.one) value.
                 transform.SetParent(null, m_CachedWorldPositionStays);
-                InvokeBehaviourOnNetworkObjectParentChanged(null);
+                if (enableNotification)
+                {
+                    InvokeBehaviourOnNetworkObjectParentChanged(null);
+                }
                 return true;
             }
 
@@ -1340,7 +1346,10 @@ namespace Unity.Netcode
 
             m_CachedParent = parentObject.transform;
             transform.SetParent(parentObject.transform, m_CachedWorldPositionStays);
-            InvokeBehaviourOnNetworkObjectParentChanged(parentObject);
+            if (enableNotification)
+            {
+                InvokeBehaviourOnNetworkObjectParentChanged(parentObject);
+            }
             return true;
         }
 
@@ -1467,16 +1476,6 @@ namespace Unity.Netcode
             }
         }
 
-        internal void WriteNetworkVariableData(FastBufferWriter writer, ulong targetClientId)
-        {
-            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
-            {
-                var behavior = ChildNetworkBehaviours[i];
-                behavior.InitializeVariables();
-                behavior.WriteNetworkVariableData(writer, targetClientId);
-            }
-        }
-
         internal void MarkVariablesDirty(bool dirty)
         {
             for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
@@ -1516,18 +1515,6 @@ namespace Unity.Netcode
             }
         }
 
-        /// <summary>
-        /// Only invoked during first synchronization of a NetworkObject (late join or newly spawned)
-        /// </summary>
-        internal void SetNetworkVariableData(FastBufferReader reader, ulong clientId)
-        {
-            for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
-            {
-                var behaviour = ChildNetworkBehaviours[i];
-                behaviour.InitializeVariables();
-                behaviour.SetNetworkVariableData(reader, clientId);
-            }
-        }
 
         internal ushort GetNetworkBehaviourOrderIndex(NetworkBehaviour instance)
         {
@@ -1735,14 +1722,6 @@ namespace Unity.Netcode
             }
         }
 
-        internal void PostNetworkVariableWrite(bool forceSend)
-        {
-            for (int k = 0; k < ChildNetworkBehaviours.Count; k++)
-            {
-                ChildNetworkBehaviours[k].PostNetworkVariableWrite(forceSend);
-            }
-        }
-
         /// <summary>
         /// Handles synchronizing NetworkVariables and custom synchronization data for NetworkBehaviours.
         /// </summary>
@@ -1756,11 +1735,16 @@ namespace Unity.Netcode
             {
                 var writer = serializer.GetFastBufferWriter();
                 var positionBeforeSynchronizing = writer.Position;
-                writer.WriteValueSafe((ushort)0);
+                writer.WriteValueSafe(0);
                 var sizeToSkipCalculationPosition = writer.Position;
 
                 // Synchronize NetworkVariables
-                WriteNetworkVariableData(writer, targetClientId);
+                foreach (var behavior in ChildNetworkBehaviours)
+                {
+                    behavior.InitializeVariables();
+                    behavior.WriteNetworkVariableData(writer, targetClientId);
+                }
+
                 // Reserve the NetworkBehaviour synchronization count position
                 var networkBehaviourCountPosition = writer.Position;
                 writer.WriteValueSafe((byte)0);
@@ -1782,7 +1766,7 @@ namespace Unity.Netcode
                 // synchronization.
                 writer.Seek(positionBeforeSynchronizing);
                 // We want the size of everything after our size to skip calculation position
-                var size = (ushort)(currentPosition - sizeToSkipCalculationPosition);
+                var size = currentPosition - sizeToSkipCalculationPosition;
                 writer.WriteValueSafe(size);
                 // Write the number of NetworkBehaviours synchronized
                 writer.Seek(networkBehaviourCountPosition);
@@ -1794,23 +1778,34 @@ namespace Unity.Netcode
             else
             {
                 var reader = serializer.GetFastBufferReader();
-
-                reader.ReadValueSafe(out ushort sizeOfSynchronizationData);
+                reader.ReadValueSafe(out int sizeOfSynchronizationData);
                 var seekToEndOfSynchData = reader.Position + sizeOfSynchronizationData;
-                // Apply the network variable synchronization data
-                SetNetworkVariableData(reader, targetClientId);
-                // Read the number of NetworkBehaviours to synchronize
-                reader.ReadValueSafe(out byte numberSynchronized);
-                var networkBehaviourId = (ushort)0;
 
-                // If a NetworkBehaviour writes synchronization data, it will first
-                // write its NetworkBehaviourId so when deserializing the client-side
-                // can find the right NetworkBehaviour to deserialize the synchronization data.
-                for (int i = 0; i < numberSynchronized; i++)
+                try
                 {
-                    serializer.SerializeValue(ref networkBehaviourId);
-                    var networkBehaviour = GetNetworkBehaviourAtOrderIndex(networkBehaviourId);
-                    networkBehaviour.Synchronize(ref serializer, targetClientId);
+                    // Apply the network variable synchronization data
+                    foreach (var behaviour in ChildNetworkBehaviours)
+                    {
+                        behaviour.InitializeVariables();
+                        behaviour.SetNetworkVariableData(reader, targetClientId);
+                    }
+
+                    // Read the number of NetworkBehaviours to synchronize
+                    reader.ReadValueSafe(out byte numberSynchronized);
+
+                    // If a NetworkBehaviour writes synchronization data, it will first
+                    // write its NetworkBehaviourId so when deserializing the client-side
+                    // can find the right NetworkBehaviour to deserialize the synchronization data.
+                    for (int i = 0; i < numberSynchronized; i++)
+                    {
+                        reader.ReadValueSafe(out ushort networkBehaviourId);
+                        var networkBehaviour = GetNetworkBehaviourAtOrderIndex(networkBehaviourId);
+                        networkBehaviour.Synchronize(ref serializer, targetClientId);
+                    }
+                }
+                catch
+                {
+                    reader.Seek(seekToEndOfSynchData);
                 }
             }
         }
@@ -1819,6 +1814,8 @@ namespace Unity.Netcode
         {
             var obj = new SceneObject
             {
+                HasParent = transform.parent != null,
+                WorldPositionStays = m_CachedWorldPositionStays,
                 NetworkObjectId = NetworkObjectId,
                 OwnerClientId = OwnerClientId,
                 IsPlayerObject = IsPlayerObject,
@@ -1829,31 +1826,16 @@ namespace Unity.Netcode
                 TargetClientId = targetClientId
             };
 
-            NetworkObject parentNetworkObject = null;
-
-            if (!AlwaysReplicateAsRoot && transform.parent != null)
+            // Handle Parenting
+            if (!AlwaysReplicateAsRoot && obj.HasParent)
             {
-                parentNetworkObject = transform.parent.GetComponent<NetworkObject>();
-                // In-scene placed NetworkObjects parented under GameObjects with no NetworkObject
-                // should set the has parent flag and preserve the world position stays value
-                if (parentNetworkObject == null && obj.IsSceneObject)
-                {
-                    obj.HasParent = true;
-                    obj.WorldPositionStays = m_CachedWorldPositionStays;
-                }
-            }
+                var parentNetworkObject = transform.parent.GetComponent<NetworkObject>();
 
-            if (parentNetworkObject != null)
-            {
-                obj.HasParent = true;
-                obj.ParentObjectId = parentNetworkObject.NetworkObjectId;
-                obj.WorldPositionStays = m_CachedWorldPositionStays;
-                var latestParent = GetNetworkParenting();
-                var isLatestParentSet = latestParent != null && latestParent.HasValue;
-                obj.IsLatestParentSet = isLatestParentSet;
-                if (isLatestParentSet)
+                if (parentNetworkObject)
                 {
-                    obj.LatestParent = latestParent.Value;
+                    obj.ParentObjectId = parentNetworkObject.NetworkObjectId;
+                    obj.LatestParent = GetNetworkParenting();
+                    obj.IsLatestParentSet = obj.LatestParent != null && obj.LatestParent.HasValue;
                 }
             }
 
@@ -1865,12 +1847,6 @@ namespace Unity.Netcode
                 // be synchronizing clients with.
                 var syncRotationPositionLocalSpaceRelative = obj.HasParent && !m_CachedWorldPositionStays;
                 var syncScaleLocalSpaceRelative = obj.HasParent && !m_CachedWorldPositionStays;
-
-                // Always synchronize in-scene placed object's scale using local space
-                if (obj.IsSceneObject)
-                {
-                    syncScaleLocalSpaceRelative = obj.HasParent;
-                }
 
                 // If auto object synchronization is turned off
                 if (!AutoObjectParentSync)
@@ -1926,7 +1902,7 @@ namespace Unity.Netcode
                 try
                 {
                     // If we failed to load this NetworkObject, then skip past the Network Variable and (if any) synchronization data
-                    reader.ReadValueSafe(out ushort networkBehaviourSynchronizationDataLength);
+                    reader.ReadValueSafe(out int networkBehaviourSynchronizationDataLength);
                     reader.Seek(reader.Position + networkBehaviourSynchronizationDataLength);
                 }
                 catch (Exception ex)
@@ -1948,6 +1924,15 @@ namespace Unity.Netcode
             // Synchronize NetworkBehaviours
             var bufferSerializer = new BufferSerializer<BufferSerializerReader>(new BufferSerializerReader(reader));
             networkObject.SynchronizeNetworkBehaviours(ref bufferSerializer, networkManager.LocalClientId);
+
+            // If we are an in-scene placed NetworkObject and we originally had a parent but when synchronized we are
+            // being told we do not have a parent, then we want to clear the latest parent so it is not automatically
+            // "re-parented" to the original parent. This can happen if not unloading the scene and the parenting of
+            // the in-scene placed Networkobject changes several times over different sessions.
+            if (sceneObject.IsSceneObject && !sceneObject.HasParent && networkObject.m_LatestParent.HasValue)
+            {
+                networkObject.m_LatestParent = null;
+            }
 
             // Spawn the NetworkObject
             networkManager.SpawnManager.SpawnNetworkObjectLocally(networkObject, sceneObject, sceneObject.DestroyWithScene);

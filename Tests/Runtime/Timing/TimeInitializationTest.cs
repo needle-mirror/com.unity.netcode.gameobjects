@@ -16,6 +16,7 @@ namespace Unity.Netcode.RuntimeTests
         private NetworkManager m_Client;
 
         [UnityTest]
+        [UnityPlatform(exclude = new[] { RuntimePlatform.Android })] // Tracked in MTT-11356.
         public IEnumerator TestClientTimeInitializationOnConnect([Values(0, 1f)] float serverStartDelay, [Values(0, 1f)] float clientStartDelay, [Values(true, false)] bool isHost)
         {
             // Create multiple NetworkManager instances
@@ -42,10 +43,11 @@ namespace Unity.Netcode.RuntimeTests
             yield return new WaitUntil(() => server.NetworkTickSystem.ServerTime.Tick > 2);
 
             var serverTimePassed = server.NetworkTickSystem.ServerTime.Time;
-            var expectedServerTickCount = Mathf.FloorToInt((float)(serverTimePassed * 30));
 
+            // Use FixedDeltaTimeAsDouble and divide the tick frequency into the time passed to get the accurate tick count
+            var expectedServerTickCount = (int)System.Math.Floor(serverTimePassed / server.ServerTime.FixedDeltaTimeAsDouble);
             var ticksPassed = server.NetworkTickSystem.ServerTime.Tick - serverTick;
-            Assert.AreEqual(expectedServerTickCount, ticksPassed);
+            Assert.AreEqual(expectedServerTickCount, ticksPassed, $"Calculated tick failed: Tick ({expectedServerTickCount}) TicksPassed ({ticksPassed}) Server Tick ({server.NetworkTickSystem.ServerTime.Tick}) Prev-Server Tick ({serverTick})");
 
             yield return new WaitForSeconds(clientStartDelay);
 

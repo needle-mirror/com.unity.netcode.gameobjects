@@ -51,6 +51,11 @@ namespace Unity.Netcode
         public float FixedDeltaTime => (float)m_TickInterval;
 
         /// <summary>
+        /// Gets the fixed delta time as a double. This value is calculated by dividing 1.0 by the <see cref="TickRate"/> and stays constant.
+        /// </summary>
+        public double FixedDeltaTimeAsDouble => m_TickInterval;
+
+        /// <summary>
         /// Gets the amount of network ticks which have passed until reaching the current time value.
         /// </summary>
         public int Tick => m_CachedTick;
@@ -114,13 +119,24 @@ namespace Unity.Netcode
         }
 
         /// <summary>
-        /// Returns the time a number of ticks in the past.
+        /// Calculates a NetworkTime value representing a point in the past relative to the current time (few ticks in the past).
         /// </summary>
-        /// <param name="ticks">The number of ticks ago we're querying the time</param>
-        /// <returns></returns>
+        /// <param name="ticks">The number of ticks ago we're querying the time.</param>
+        /// <returns>A NetworkTime value representing the calculated past time point</returns>
         public NetworkTime TimeTicksAgo(int ticks)
         {
-            return this - new NetworkTime(TickRate, ticks);
+            return TimeTicksAgo(ticks, 0.0f);
+        }
+
+        /// <summary>
+        /// Calculates a NetworkTime value representing a point in the past relative to the current time (few ticks in the past)
+        /// </summary>
+        /// <param name="ticks">The number of ticks ago we're querying the time.</param>
+        /// <param name="offset">Optional parameter to specify a tick offset (fractional) value.</param>
+        /// <returns>A NetworkTime value representing the calculated past time point</returns>
+        public NetworkTime TimeTicksAgo(int ticks, float offset = 0.0f)
+        {
+            return this - new NetworkTime(TickRate, ticks, offset);
         }
 
         private void UpdateCache()

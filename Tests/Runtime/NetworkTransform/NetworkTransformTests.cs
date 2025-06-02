@@ -80,6 +80,8 @@ namespace Unity.Netcode.RuntimeTests
     internal class NetworkTransformTests : NetworkTransformBase
     {
         protected const int k_TickRate = 60;
+
+        protected const int k_DefaultTimeTravelFrames = 1000;
         /// <summary>
         /// Constructor
         /// </summary>
@@ -90,6 +92,12 @@ namespace Unity.Netcode.RuntimeTests
         {
             NetworkTransform.AssignDefaultInterpolationType = true;
             NetworkTransform.DefaultInterpolationType = interpolation;
+        }
+
+        // TODO: [CmbServiceTests] Adapt to run with the service
+        protected override bool UseCMBService()
+        {
+            return false;
         }
 
         protected override void OnOneTimeTearDown()
@@ -743,11 +751,11 @@ namespace Unity.Netcode.RuntimeTests
             if (overideState == OverrideState.CommitToTransform)
             {
                 // Wait for the deltas to be pushed
-                success = WaitForConditionOrTimeOutWithTimeTravel(() => m_AuthoritativeTransform.StatePushed, 600);
+                success = WaitForConditionOrTimeOutWithTimeTravel(() => m_AuthoritativeTransform.StatePushed, k_DefaultTimeTravelFrames);
                 Assert.True(success, $"[Position] Timed out waiting for state to be pushed ({m_AuthoritativeTransform.StatePushed})!");
             }
 
-            success = WaitForConditionOrTimeOutWithTimeTravel(() => PositionsMatch(), 600);
+            success = WaitForConditionOrTimeOutWithTimeTravel(() => PositionsMatch(), k_DefaultTimeTravelFrames);
             Assert.True(success, $"Timed out waiting for positions to match {m_AuthoritativeTransform.transform.position} | {m_NonAuthoritativeTransform.transform.position}");
 
             // test rotation
@@ -778,12 +786,12 @@ namespace Unity.Netcode.RuntimeTests
             if (overideState == OverrideState.CommitToTransform)
             {
                 // Wait for the deltas to be pushed
-                success = WaitForConditionOrTimeOutWithTimeTravel(() => m_AuthoritativeTransform.StatePushed, 600);
+                success = WaitForConditionOrTimeOutWithTimeTravel(() => m_AuthoritativeTransform.StatePushed, k_DefaultTimeTravelFrames);
                 Assert.True(success, $"[Rotation] Timed out waiting for state to be pushed ({m_AuthoritativeTransform.StatePushed})!");
             }
 
             // Make sure the values match
-            success = WaitForConditionOrTimeOutWithTimeTravel(() => RotationsMatch(), 600);
+            success = WaitForConditionOrTimeOutWithTimeTravel(() => RotationsMatch(), k_DefaultTimeTravelFrames);
             Assert.True(success, $"Timed out waiting for rotations to match");
 
             m_AuthoritativeTransform.StatePushed = false;
@@ -812,12 +820,12 @@ namespace Unity.Netcode.RuntimeTests
             if (overideState == OverrideState.CommitToTransform)
             {
                 // Wait for the deltas to be pushed
-                success = WaitForConditionOrTimeOutWithTimeTravel(() => m_AuthoritativeTransform.StatePushed, 600);
+                success = WaitForConditionOrTimeOutWithTimeTravel(() => m_AuthoritativeTransform.StatePushed, k_DefaultTimeTravelFrames);
                 Assert.True(success, $"[Rotation] Timed out waiting for state to be pushed ({m_AuthoritativeTransform.StatePushed})!");
             }
 
             // Make sure the scale values match
-            success = WaitForConditionOrTimeOutWithTimeTravel(() => ScaleValuesMatch(), 600);
+            success = WaitForConditionOrTimeOutWithTimeTravel(() => ScaleValuesMatch(), k_DefaultTimeTravelFrames);
             Assert.True(success, $"Timed out waiting for scale values to match");
         }
 

@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Fixed\n\n- Fixed issue where the authority instance of NetworkTransform could check for state updates more than one time in a frame if the frame rate is greater than the tick frequency. (#3413)\n- Fixed issue where the new interpolator types were blocking after the first consumption of a sequence of buffered state updates. (#3413)\n- Fixed issue where root level in-scene placed `NetworkObject`s would only allow the ownership permission to be no less than distributable or sessionowner. (#3407)"
+    "changelog": "### Added\n\n- Added `SinglePlayerTransport` that provides the ability to start as a host for a single player network session. (#3473)\n- When using UnityTransport >=2.4 and Unity >= 6000.1.0a1, SetConnectionData will accept a fully qualified hostname instead of an IP as a connect address on the client side. (#3441)\n\n### Fixed\n\n- Fixed issue where the `NetworkObject.DontDestroyWithOwner` was not being honored. (#3477)\n- Fixed issue where non-authority `NetworkTransform` instances would not allow non-synchronized axis values to be updated locally. (#3471)\n- Fixed issue where invoking `NetworkObject.NetworkShow` and `NetworkObject.ChangeOwnership` consecutively within the same call stack location could result in an unnecessary change in ownership error message generated on the target client side. (#3468)\n- Fixed issue where `NetworkVariable`s on a `NetworkBehaviour` could fail to synchronize changes if one has `NetworkVariableUpdateTraits` set and is dirty but is not ready to send. (#3466)\n- Fixed issue with the Distributed Authority connection sequence with scene management enabled where the `ClientConnected` event was fired before the client was synchronized. (#3459)\n- Fixed inconsistencies in the `OnSceneEvent` callback. (#3458)\n- Fixed issues with the `NetworkBehaviour` and `NetworkVariable` length safety checks. (#3405)\n- Fixed memory leaks when domain reload is disabled. (#3427)\n- Fixed issue where disabling the physics or physics2D package modules could result in a compilation error. (#3422)\n- Fixed an exception being thrown when unregistering a custom message handler from within the registered callback. (#3417)\n\n### Changed"
   },
   "upmCi": {
-    "footprint": "1f44d9014143b9fa99ed009a6b1532e890e3a57e"
+    "footprint": "52bbcb8c97840defa20799976fc233459f75a666"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.3/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.4/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "72144d88aa7748be96a3cc64c5c633ce797507d0"
+    "revision": "0793655547a72e2ae7b8375f1764eccfd51a67c3"
   }
 }

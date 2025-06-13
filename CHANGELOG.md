@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [2.4.2] - 2025-06-13
+
+### Fixed
+
+- Fixed `NullReferenceException` on `NetworkList` when used without a NetworkManager in scene. (#3503)
+- Fixed issue where `NetworkClient` could persist some settings if re-using the same `NetworkManager` instance. (#3491)
+- Fixed issue where a pooled `NetworkObject` was not resetting the internal latest parent property when despawned. (#3491)
+- Fixed issue where the initial client synchronization pre-serialization process was not excluding spawned `NetworkObject` instances that already had pending visibility for the client being synchronized. (#3488)
+- Fixed issue where there was a potential for a small memory leak in the `ConnectionApprovedMessage`. (#3486)
+
+
 ## [2.4.1] - 2025-06-11
 
 ### Added
@@ -16,6 +27,7 @@ Additional documentation and release notes are available at [Multiplayer Documen
 
 - Changed: Assembly names while keeping the same namespaces. If your project is using the `Unity.Netcode.TestHelpers.Runtime` assembly then you need to switch `asmdef` references to `Unity.Netcode.Runtime.Tests`. (#3444)
 - Changed: Migrated multiplayer metrics tests to Multiplayer Tools repository and removed the multiplayer tools test project. (#3444)
+
 
 ## [2.4.0] - 2025-06-02
 

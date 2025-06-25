@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Fixed\n\n- Fixed `NullReferenceException` on `NetworkList` when used without a NetworkManager in scene. (#3503)\n- Fixed issue where `NetworkClient` could persist some settings if re-using the same `NetworkManager` instance. (#3491)\n- Fixed issue where a pooled `NetworkObject` was not resetting the internal latest parent property when despawned. (#3491)\n- Fixed issue where the initial client synchronization pre-serialization process was not excluding spawned `NetworkObject` instances that already had pending visibility for the client being synchronized. (#3488)\n- Fixed issue where there was a potential for a small memory leak in the `ConnectionApprovedMessage`. (#3486)"
+    "changelog": "### Fixed\n\n- Fixed issue where spawned objects with `NetworkObject.DontDestroyWithOwner` set to `false` would not be destroyed when using a client-server network topology. (#3522)"
   },
   "upmCi": {
-    "footprint": "b65bacb797050b3311b419e134058c8dca6519fa"
+    "footprint": "c6c162c7d812e35498ac250d43fcf8b62c7204f9"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.4/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "7bbc1c3a950ed4c5c10f3be25bd19ae1900d5f52"
+    "revision": "31017e2eae5a9ef797303a05ba4eb6f317fa80f0"
   }
 }

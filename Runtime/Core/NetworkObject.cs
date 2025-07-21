@@ -385,29 +385,31 @@ namespace Unity.Netcode
         public bool SpawnWithObservers = true;
 
         /// <summary>
-        /// Delegate type for checking visibility
+        /// Delegate type for checking visibility.
         /// </summary>
-        /// <param name="clientId">The clientId to check visibility for</param>
+        /// <param name="clientId">The clientId being checked for visibility.</param>
+        /// <returns>True if the object should be visible to the specified client and false if it should not.</returns>
         public delegate bool VisibilityDelegate(ulong clientId);
 
         /// <summary>
-        /// Delegate invoked when the netcode needs to know if the object should be visible to a client, if null it will assume true
+        /// Delegate invoked when the netcode needs to know if the object should be visible to a client, if null it will assume true.
         /// </summary>
         public VisibilityDelegate CheckObjectVisibility = null;
 
         /// <summary>
-        /// Delegate type for checking spawn options
+        /// Delegate type for checking spawn options.
         /// </summary>
-        /// <param name="clientId">The clientId to check spawn options for</param>
+        /// <param name="clientId">The clientId being checked for visibility.</param>
+        /// <returns>True if the object should be visible to the specified client and false if it should not.</returns>
         public delegate bool SpawnDelegate(ulong clientId);
 
         /// <summary>
-        /// Delegate invoked when the netcode needs to know if it should include the transform when spawning the object, if null it will assume true
+        /// Delegate invoked when the netcode needs to know if it should include the transform when spawning the object, if null it will assume true.
         /// </summary>
         public SpawnDelegate IncludeTransformWhenSpawning = null;
 
         /// <summary>
-        /// Whether or not to destroy this object if it's owner is destroyed.
+        /// Whether or not to destroy this object if it's owner is destroyed.<br />
         /// If true, the objects ownership will be given to the server.
         /// </summary>
         public bool DontDestroyWithOwner;
@@ -416,6 +418,24 @@ namespace Unity.Netcode
         /// Whether or not to enable automatic NetworkObject parent synchronization.
         /// </summary>
         public bool AutoObjectParentSync = true;
+
+        /// <summary>
+        /// Determines if the owner will apply transform values sent by the parenting message.
+        /// </summary>
+        /// <remarks>
+        /// When enabled, the resultant parenting transform changes sent by the authority will be applied on all instances. <br />
+        /// When disabled, the resultant parenting transform changes sent by the authority will not be applied on the owner's instance. <br />
+        /// When disabled, all non-owner instances will still be synchronized by the authority's transform values when parented.
+        /// </remarks>
+        [Tooltip("When disabled (default enabled), the owner will not apply a server or host's transform properties when parenting changes. Primarily useful for client-server network topology configurations.")]
+        public bool SyncOwnerTransformWhenParented = true;
+
+        /// <summary>
+        /// Client-Server specific, when enabled an owner of a NetworkObject can parent locally as opposed to requiring the owner to notify the server it would like to be parented.
+        /// This behavior is always true when using a distributed authority network topology and does not require it to be set.
+        /// </summary>
+        [Tooltip("When enabled (default disabled), owner's can parent a NetworkObject locally without having to send an RPC to the server or host. Only pertinent when using client-server network topology configurations.")]
+        public bool AllowOwnerToParent;
 
         internal readonly HashSet<ulong> Observers = new HashSet<ulong>();
 
@@ -895,6 +915,14 @@ namespace Unity.Netcode
             NetworkManager.SpawnManager.DespawnObject(this, destroy);
         }
 
+        internal void ResetOnDespawn()
+        {
+            // Always clear out the observers list when despawned
+            Observers.Clear();
+            IsSpawned = false;
+            m_LatestParent = null;
+        }
+
         /// <summary>
         /// Removes all ownership of an object from any client. Can only be called from server
         /// </summary>
@@ -1086,8 +1114,9 @@ namespace Unity.Netcode
             {
                 return false;
             }
-
-            if (!NetworkManager.IsServer && !NetworkManager.ShutdownInProgress)
+            // If we don't have authority and we are not shutting down, then don't allow any parenting.
+            // If we are shutting down and don't have authority then allow it.
+            if (!(NetworkManager.IsServer || (AllowOwnerToParent && IsOwner)) && !NetworkManager.ShutdownInProgress)
             {
                 return false;
             }
@@ -1101,6 +1130,8 @@ namespace Unity.Netcode
             {
                 return false;
             }
+
+
 
             m_CachedWorldPositionStays = worldPositionStays;
 
@@ -1135,7 +1166,9 @@ namespace Unity.Netcode
                 return;
             }
 
-            if (!NetworkManager.IsServer)
+            var hasAuthority = NetworkManager.IsServer || (AllowOwnerToParent && IsOwner);
+
+            if (!hasAuthority)
             {
                 // Log exception if we are a client and not shutting down.
                 if (!NetworkManager.ShutdownInProgress)
@@ -1485,12 +1518,39 @@ namespace Unity.Netcode
             }
         }
 
-        internal void MarkOwnerReadVariablesDirty()
+        /// <summary>
+        /// Used when changing ownership, this will mark any owner read permission base NetworkVariables as dirty
+        /// and will check if any owner write permission NetworkVariables are dirty (primarily for collections) so
+        /// the new owner will get a full state update prior to changing ownership.
+        /// </summary>
+        /// <remarks>
+        /// We have to pass in the original owner and previous owner to "reset" back to the current state of this
+        /// NetworkObject in order to preserve the same ownership change flow. By the time this is invoked, the
+        /// new and previous owner ids have already been set.
+        /// </remarks>
+        /// <param name="originalOwnerId">the owner prior to beginning the change in ownership change.</param>
+        /// <param name="originalPreviousOwnerId">the previous owner prior to beginning the change in ownership change.</param>
+        internal void SynchronizeOwnerNetworkVariables(ulong originalOwnerId, ulong originalPreviousOwnerId)
         {
+            var currentOwnerId = OwnerClientId;
+            OwnerClientId = originalOwnerId;
+            PreviousOwnerId = originalPreviousOwnerId;
             for (int i = 0; i < ChildNetworkBehaviours.Count; i++)
             {
-                ChildNetworkBehaviours[i].MarkOwnerReadVariablesDirty();
+                ChildNetworkBehaviours[i].MarkOwnerReadDirtyAndCheckOwnerWriteIsDirty();
             }
+
+            // Now set the new owner and previous owner identifiers back to their original new values
+            // before we run the NetworkBehaviourUpdate. For owner read only permissions this order of
+            // operations is **particularly important** as we need to first (above) mark things as dirty
+            // from the context of the original owner and then second (below) we need to send the messages
+            // which requires the new owner to be set for owner read permission NetworkVariables.
+            OwnerClientId = currentOwnerId;
+            PreviousOwnerId = originalOwnerId;
+
+            // Force send a state update for all owner read NetworkVariables  and any currently dirty
+            // owner write NetworkVariables.
+            NetworkManager.BehaviourUpdater.NetworkBehaviourUpdate(true);
         }
 
         // NGO currently guarantees that the client will receive spawn data for all objects in one network tick.
@@ -1543,6 +1603,11 @@ namespace Unity.Netcode
             return 0;
         }
 
+        /// <summary>
+        /// Gets a NetworkBehaviour component at the specified index in this object's NetworkBehaviour list.
+        /// </summary>
+        /// <param name="index">The zero-based index of the NetworkBehaviour to retrieve.</param>
+        /// <returns>The NetworkBehaviour at the specified index, or null if the index is out of bounds.</returns>
         public NetworkBehaviour GetNetworkBehaviourAtOrderIndex(ushort index)
         {
             if (index >= ChildNetworkBehaviours.Count)

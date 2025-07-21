@@ -6,8 +6,15 @@ using UnityEngine;
 
 namespace Unity.Netcode
 {
+    /// <summary>
+    /// Exception thrown when an RPC (Remote Procedure Call) encounters an error during execution.
+    /// </summary>
     public class RpcException : Exception
     {
+        /// <summary>
+        /// Initializes a new instance of the RpcException class with a specified error message.
+        /// </summary>
+        /// <param name="message">The message that describes the error.</param>
         public RpcException(string message) : base(message)
         {
 
@@ -15,7 +22,7 @@ namespace Unity.Netcode
     }
 
     /// <summary>
-    /// The base class to override to write network code. Inherits MonoBehaviour
+    /// The base class to override to write network code. Inherits from <see cref="MonoBehaviour"/>.
     /// </summary>
     public abstract class NetworkBehaviour : MonoBehaviour
     {
@@ -1002,8 +1009,8 @@ namespace Unity.Netcode
                         if (networkVariable.CanSend())
                         {
                             shouldSend = true;
+                            break;
                         }
-                        break;
                     }
                 }
 
@@ -1091,13 +1098,22 @@ namespace Unity.Netcode
             }
         }
 
-        internal void MarkOwnerReadVariablesDirty()
+        /// <summary>
+        /// For owner read permissions, when changing ownership we need to do a full synchronization
+        /// of all NetworkVariables that are owner read permission based since the owner is the only
+        /// instance that knows what the most current values are.
+        /// </summary>
+        internal void MarkOwnerReadDirtyAndCheckOwnerWriteIsDirty()
         {
             for (int j = 0; j < NetworkVariableFields.Count; j++)
             {
                 if (NetworkVariableFields[j].ReadPerm == NetworkVariableReadPermission.Owner)
                 {
                     NetworkVariableFields[j].SetDirty(true);
+                }
+                if (NetworkVariableFields[j].WritePerm == NetworkVariableWritePermission.Owner)
+                {
+                    NetworkVariableFields[j].OnCheckIsDirtyState();
                 }
             }
         }

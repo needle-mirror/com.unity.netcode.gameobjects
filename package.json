@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "unity": "2021.3",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.10.1",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- Added serializer for `Pose` (#3540)\n- Added mappings between `ClientId` and `TransportId`. (#3515)\n- Added `SinglePlayerTransport` that provides the ability to start as a host for a single player network session. (#3475)\n- When using UnityTransport >=2.4 and Unity >= 6000.1.0a1, SetConnectionData will accept a fully qualified hostname instead of an IP as a connect address on the client side. (#3440)\n\n### Fixed\n\n- Fixed `NullReferenceException` on `NetworkList` when used without a NetworkManager in scene. (#3502)\n- Fixed inconsistencies in the `OnSceneEvent` callback. (#3487)\n- Fixed issue where `NetworkClient` could persist some settings if re-using the same `NetworkManager` instance. (#3494)\n- Fixed issue where a pooled `NetworkObject` was not resetting the internal latest parent property when despawned. (#3494)\n- Fixed issue where the initial client synchronization pre-serialization process was not excluding spawned `NetworkObjects` that already had pending visibility for the client being synchronized. (#3493)\n- Fixed issue where invoking `NetworkObject.NetworkShow` and `NetworkObject.ChangeOwnership` consecutively within the same call stack location could result in an unnecessary change in ownership error message generated on the target client side. (#3493)\n- Fixed issue where `NetworkVariable`s on a `NetworkBehaviour` could fail to synchronize changes if one has `NetworkVariableUpdateTraits` set and is dirty but is not ready to send. (#3465)\n- Fixed issue where when a client changes ownership via RPC the `NetworkBehaviour.OnOwnershipChanged` can result in identical previous and current owner identifiers. (#3434)\n\n### Changed"
+    "changelog": "### Fixed\n\n- Fixed issue with unnecessary internal GC Allocations when using the `IReadOnlyList`  `NetworkManager.ConnectedClientsIds` within a `foreach` statement by either replacing with a `for` loop or directly referencing the `NetworkConnectionManager.ConnectedClientIds`. (#3601)\n- Fixed issue with allocation to the heap in NetworkBehaviourUpdate when there is nothing to be updated. (#3568)\n- Fixed issue where NetworkConfig.ConnectionData could cause the ConnectionRequestMessage to exceed the transport's MTU size and would result in a buffer overflow error. (#3565)"
   },
   "upmCi": {
-    "footprint": "485b71da22d171b473849ea13f232b145e41681d"
+    "footprint": "349150cf343aa2e5518be9f3cb4fc8dd52987795"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@1.14/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "1e738606324f365776e7c630805e6e4901a5b87e"
+    "revision": "3e19af9f212e1e824f25d7cdf9b39a8ca5cd1471"
   }
 }

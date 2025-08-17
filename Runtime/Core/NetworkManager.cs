@@ -1468,6 +1468,20 @@ namespace Unity.Netcode
         }
 
         /// <summary>
+        /// Get the TransportId from the associated ClientId.
+        /// </summary>
+        /// <param name="clientId">The ClientId to get the TransportId from</param>
+        /// <returns>The TransportId associated with the given ClientId</returns>
+        public ulong GetTransportIdFromClientId(ulong clientId) => ConnectionManager.ClientIdToTransportId(clientId);
+
+        /// <summary>
+        /// Get the ClientId from the associated TransportId.
+        /// </summary>
+        /// <param name="transportId">The TransportId to get the ClientId from</param>
+        /// <returns>The ClientId from the associated TransportId</returns>
+        public ulong GetClientIdFromTransportId(ulong transportId) => ConnectionManager.TransportIdToClientId(transportId);
+
+        /// <summary>
         /// Disconnects the remote client.
         /// </summary>
         /// <param name="clientId">The ClientId to disconnect</param>
@@ -1538,11 +1552,26 @@ namespace Unity.Netcode
             DeferredMessageManager?.CleanupAllTriggers();
             CustomMessagingManager = null;
 
-            RpcTarget?.Dispose();
-            RpcTarget = null;
-
             BehaviourUpdater?.Shutdown();
             BehaviourUpdater = null;
+
+            /// Despawning upon shutdown
+
+            // We need to clean up NetworkObjects before we reset the IsServer
+            // and IsClient properties. This provides consistency of these two
+            // property values for NetworkObjects that are still spawned when
+            // the shutdown cycle begins.
+
+            // We need to handle despawning prior to shutting down the connection
+            // manager or disposing of the RpcTarget so any final updates can take
+            // place (i.e. sending any last state updates or the like).
+
+            SpawnManager?.DespawnAndDestroyNetworkObjects();
+            SpawnManager?.ServerResetShudownStateForSceneObjects();
+            ////
+
+            RpcTarget?.Dispose();
+            RpcTarget = null;
 
             // Shutdown connection manager last which shuts down transport
             ConnectionManager.Shutdown();
@@ -1553,17 +1582,12 @@ namespace Unity.Netcode
                 MessageManager = null;
             }
 
-            // We need to clean up NetworkObjects before we reset the IsServer
-            // and IsClient properties. This provides consistency of these two
-            // property values for NetworkObjects that are still spawned when
-            // the shutdown cycle begins.
-            SpawnManager?.DespawnAndDestroyNetworkObjects();
-            SpawnManager?.ServerResetShudownStateForSceneObjects();
-            SpawnManager = null;
-
             // Let the NetworkSceneManager clean up its two SceneEvenData instances
             SceneManager?.Dispose();
             SceneManager = null;
+
+            SpawnManager = null;
+
             IsListening = false;
             m_ShuttingDown = false;
 
@@ -1593,8 +1617,9 @@ namespace Unity.Netcode
             // Completely reset the NetworkClient
             ConnectionManager.LocalClient = new NetworkClient();
 
-            // This cleans up the internal prefabs list
+            // Clean up the internal prefabs data
             NetworkConfig?.Prefabs?.Shutdown();
+            PrefabHandler.Shutdown();
 
             // Reset the configuration hash for next session in the event
             // that the prefab list changes

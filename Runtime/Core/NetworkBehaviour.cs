@@ -529,11 +529,21 @@ namespace Unity.Netcode
 
         internal bool IsBehaviourEditable()
         {
-            // Only server can MODIFY. So allow modification if network is either not running or we are server
-            return !m_NetworkObject ||
-                m_NetworkObject.NetworkManager == null ||
-                m_NetworkObject.NetworkManager.IsListening == false ||
-                m_NetworkObject.NetworkManager.IsServer;
+            if (!m_NetworkObject)
+            {
+                return true;
+            }
+
+            if (!m_NetworkObject.NetworkManager)
+            {
+                return true;
+            }
+
+            var networkManager = m_NetworkObject.NetworkManager;
+
+            // Only the authority can MODIFY. So allow modification if network is either not running or we are the authority.
+            return !networkManager.IsListening ||
+                ((networkManager.DistributedAuthorityMode && m_NetworkObject.IsOwner) || (!networkManager.DistributedAuthorityMode && networkManager.IsServer));
         }
 
         //  TODO: this needs an overhaul.  It's expensive, it's ja little naive in how it looks for networkObject in
@@ -737,6 +747,11 @@ namespace Unity.Netcode
         /// </summary>
         public virtual void OnNetworkDespawn() { }
 
+        /// <summary>
+        /// Gets called before <see cref="OnNetworkDespawn"/> has been invoked for all <see cref="NetworkBehaviour"/>s associated with the currently spawned <see cref="NetworkObject"/> instance.
+        /// </summary>
+        public virtual void OnNetworkPreDespawn() { }
+
         internal void NetworkPreSpawn(ref NetworkManager networkManager)
         {
             try
@@ -809,6 +824,18 @@ namespace Unity.Netcode
             try
             {
                 OnInSceneObjectsSpawned();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+        }
+
+        internal void InternalOnNetworkPreDespawn()
+        {
+            try
+            {
+                OnNetworkPreDespawn();
             }
             catch (Exception e)
             {
@@ -1508,6 +1535,14 @@ namespace Unity.Netcode
             }
         }
 
+        /// <summary>
+        /// Use to assure a helper component invokes script during destroy in the
+        /// event that a derived class does not invoke base.OnDestroy.
+        /// </summary>
+        internal virtual void InternalOnDestroy()
+        {
+
+        }
 
         /// <summary>
         /// Invoked when the <see cref="GameObject"/> the <see cref="NetworkBehaviour"/> is attached to is destroyed.
@@ -1515,6 +1550,7 @@ namespace Unity.Netcode
         /// </summary>
         public virtual void OnDestroy()
         {
+            InternalOnDestroy();
             if (NetworkObject != null && NetworkObject.IsSpawned && IsSpawned)
             {
                 // If the associated NetworkObject is still spawned then this

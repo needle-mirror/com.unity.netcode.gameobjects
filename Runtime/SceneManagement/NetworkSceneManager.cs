@@ -1062,7 +1062,8 @@ namespace Unity.Netcode
         /// <param name="targetClientIds">array of client identifiers to receive the scene event message</param>
         private void SendSceneEventData(uint sceneEventId, ulong[] targetClientIds)
         {
-            if (targetClientIds.Length == 0 && !NetworkManager.DistributedAuthorityMode)
+            var distributedAuthority = NetworkManager.DistributedAuthorityMode;
+            if (targetClientIds.Length == 0 && !distributedAuthority)
             {
                 // This would be the Host/Server with no clients connected
                 // Silently return as there is nothing to be done
@@ -1072,7 +1073,7 @@ namespace Unity.Netcode
             sceneEvent.SenderClientId = NetworkManager.LocalClientId;
 
             // Send related message to the CMB service
-            if (NetworkManager.DistributedAuthorityMode && NetworkManager.CMBServiceConnection && HasSceneAuthority())
+            if (distributedAuthority && NetworkManager.CMBServiceConnection && HasSceneAuthority())
             {
                 sceneEvent.TargetClientId = NetworkManager.ServerClientId;
                 var message = new SceneEventMessage
@@ -1092,7 +1093,7 @@ namespace Unity.Netcode
                 {
                     EventData = sceneEvent,
                 };
-                var sendTarget = NetworkManager.CMBServiceConnection ? NetworkManager.ServerClientId : clientId;
+                var sendTarget = distributedAuthority && !NetworkManager.DAHost ? NetworkManager.ServerClientId : clientId;
                 var size = NetworkManager.ConnectionManager.SendMessage(ref message, k_DeliveryType, sendTarget);
                 NetworkManager.NetworkMetrics.TrackSceneEventSent(clientId, (uint)sceneEvent.SceneEventType, SceneNameFromHash(sceneEvent.SceneHash), size);
             }
@@ -1279,13 +1280,7 @@ namespace Unity.Netcode
                 }
             }
 
-            sceneEventProgress.LoadSceneMode = LoadSceneMode.Additive;
-
-            // Any NetworkObjects marked to not be destroyed with a scene and reside within the scene about to be unloaded
-            // should be migrated temporarily into the DDOL, once the scene is unloaded they will be migrated into the
-            // currently active scene.
             var networkManager = NetworkManager;
-            SceneManagerHandler.MoveObjectsFromSceneToDontDestroyOnLoad(ref networkManager, scene);
 
             var sceneEventData = BeginSceneEvent();
             sceneEventData.SceneEventProgressId = sceneEventProgress.Guid;
@@ -1296,9 +1291,15 @@ namespace Unity.Netcode
 
             // This will be the message we send to everyone when this scene event sceneEventProgress is complete
             sceneEventProgress.SceneEventType = SceneEventType.UnloadEventCompleted;
+            sceneEventProgress.LoadSceneMode = LoadSceneMode.Additive;
 
             sceneEventProgress.SceneEventId = sceneEventData.SceneEventId;
             sceneEventProgress.OnSceneEventCompleted = OnSceneUnloaded;
+
+            // Any NetworkObjects marked to not be destroyed with a scene and reside within the scene about to be unloaded
+            // should be migrated temporarily into the DDOL, once the scene is unloaded they will be migrated into the
+            // currently active scene.
+            SceneManagerHandler.MoveObjectsFromSceneToDontDestroyOnLoad(ref networkManager, scene);
 
             if (!RemoveServerClientSceneHandle(sceneEventData.SceneHandle, scene.handle))
             {
@@ -2592,7 +2593,7 @@ namespace Unity.Netcode
                                 EventData = sceneEventData,
                             };
                             // Forward synchronization to client then exit early because DAHost is not the current session owner
-                            foreach (var client in NetworkManager.ConnectedClientsIds)
+                            foreach (var client in NetworkManager.ConnectionManager.ConnectedClientIds)
                             {
                                 if (client == NetworkManager.LocalClientId)
                                 {
@@ -2679,11 +2680,18 @@ namespace Unity.Netcode
             // Create a local copy of the spawned objects list since the spawn manager will adjust the list as objects
             // are despawned.
             var localSpawnedObjectsHashSet = new HashSet<NetworkObject>(NetworkManager.SpawnManager.SpawnedObjectsList);
+            var distributedAuthority = NetworkManager.DistributedAuthorityMode;
             foreach (var networkObject in localSpawnedObjectsHashSet)
             {
                 if (networkObject == null || (networkObject != null && networkObject.gameObject.scene == DontDestroyOnLoadScene))
                 {
                     continue;
+                }
+
+                // Check to determine if we need to allow destroying a non-authority instance
+                if (distributedAuthority && networkObject.DestroyWithScene && !networkObject.HasAuthority)
+                {
+                    networkObject.DestroyPendingSceneEvent = true;
                 }
 
                 // Only NetworkObjects marked to not be destroyed with the scene
@@ -2816,6 +2824,27 @@ namespace Unity.Netcode
             foreach (var sceneEventEntry in SceneEventProgressTracking)
             {
                 if (!sceneEventEntry.Value.HasTimedOut() && sceneEventEntry.Value.SceneEventType != SceneEventType.Synchronize && sceneEventEntry.Value.Status == SceneEventProgressStatus.Started)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        internal bool IsSceneUnloading(NetworkObject networkObject)
+        {
+            if (!NetworkManager.NetworkConfig.EnableSceneManagement)
+            {
+                return false;
+            }
+
+            foreach (var sceneEventEntry in SceneEventProgressTracking)
+            {
+                var name = SceneNameFromHash(sceneEventEntry.Value.SceneHash);
+                var scene = SceneManager.GetSceneByName(name);
+                var sameScene = name == networkObject.gameObject.scene.name && scene.handle == networkObject.SceneOriginHandle;
+
+                if (!sceneEventEntry.Value.HasTimedOut() && sceneEventEntry.Value.IsUnloading() && sceneEventEntry.Value.Status == SceneEventProgressStatus.Started && sameScene)
                 {
                     return true;
                 }

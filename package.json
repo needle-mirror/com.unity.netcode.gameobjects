@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- Added `AsNativeArray()` read‑only accessor to `NetworkList<T>` (#3567)\n- Added serializer for `Pose` (#3546)\n- Added `AttachableBehaviour` helper component to provide an alternate approach to parenting items without using the `NetworkObject` parenting. (#3518)\n- Added `AttachableNode` helper component that is used by `AttachableBehaviour` as the target node for parenting. (#3518)\n- Added `ComponentController` helper component that can be used to synchronize the enabling and disabling of components and can be used in conjunction with `AttachableBehaviour`. (#3518)\n- Added `NetworkBehaviour.OnNetworkPreDespawn` that is invoked before running through the despawn sequence for the `NetworkObject` and all NetworkBehaviour children of the `NetworkObject` being despawned. (#3518)\n- Added methods `GetDefaultNetworkSettings` and `GetDefaultPipelineConfigurations` to `UnityTransport`. These can be used to retrieve the default settings and pipeline stages that are used by `UnityTransport`. This is useful when providing a custom driver constructor through `UnityTransport.s_DriverConstructor`, since it allows reusing or tuning the existing configuration instead of trying to recreate it. This means a transport with a custom driver can now easily benefit from most of the features of `UnityTransport`, like integration with the Network Simulator and Network Profiler from the multiplayer tools package. (#3501)\n- Added mappings between `ClientId` and `TransportId`. (#3516)\n- Added `NetworkPrefabInstanceHandlerWithData<T>`, a variant of `INetworkPrefabInstanceHandler` that provides access to custom instantiation data directly within the `Instantiate()` method. (#3497)\n\n### Fixed\n\n- Removed allocation to the heap in NetworkBehaviourUpdate. (#3573)\n- Fixed issue where NetworkConfig.ConnectionData could cause the ConnectionRequestMessage to exceed the transport's MTU size and would result in a buffer overflow error. (#3564)\n- Fixed regression issue in v2.x where `NetworkObject.GetNetworkBehaviourAtOrderIndex` was converted from public to internal. (#3541)\n- Fixed ensuring OnValueChanged callback is still triggered on the authority when a collection changes and then reverts to the previous value in the same frame. (#3539)\n- Fixed synchronizing the destroyGameObject parameter to clients for InScenePlaced network objects. (#3514)\n- Fixed distributed authority related issue where enabling the `NetworkObject.DestroyWithScene` would cause errors when a destroying non-authority instances due to loading (single mode) or unloading scene events. (#3500)\n- Fixed an issue where `UnityTransport` would not accept single words as valid hostnames (notably \"localhost\"). (#3591)\n- Fixed issue where viewing a `NetworkBehaviour` with one or more `NetworkVariable` fields could throw an exception if running a distributed authority network topology with a local (DAHost) host and viewed on the host when the host is not the authority of the associated `NetworkObject`. (#3578)\n- Fixed issue when using a distributed authority network topology and  viewing a `NetworkBehaviour` with one or more `NetworkVariable` fields in the inspector view would not show editable fields. (#3578)\n- Fixed issue with unnecessary internal GC Allocations when using the `IReadOnlyList`  `NetworkManager.ConnectedClientsIds` within a `foreach` statement by either replacing with a `for` loop or directly referencing the `NetworkConnectionManager.ConnectedClientIds`. (#3527)\n\n### Changed\n\n- Marked `UnityTransport.ConnectionAddressData.ServerEndPoint` as obsolete. It can't work when using hostnames as the server address, and its functionality can easily be replicated using `NetworkEndpoint.Parse`. (#3591)\n- Optimized `NetworkList<T>` indexer setter to skip operations when the new value equals the existing value, improving performance by avoiding unnecessary list events and network synchronization. (#3587)"
+    "changelog": "### Added\n\n- Added a warning when `NetworkManager.NetworkConfig.ConnectionApproval` is set in a distributed authority context. (#3658)\n\n### Fixed\n\n- Fixed issue where a client, under above average latency and packet loss conditions, could receive multiple NetworkTransform state updates in one frame and when processing the state updates only the last state update would be applied to the transform if interpolation was disabled. (#3614)"
   },
   "upmCi": {
-    "footprint": "0393c344744351c5bc0bcb08213dbb02bd054570"
+    "footprint": "2ddb77783b528192230e3ad69a8449dc9d993dbf"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.5/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "4e4093d726be2b1a76df37b52ee4d270ee416925"
+    "revision": "0a57d4464f3f7a24cb92c32e67cb08ec987f17f4"
   }
 }

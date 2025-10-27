@@ -2,11 +2,11 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
-    "com.unity.transport": "2.4.0"
+    "com.unity.transport": "2.6.0"
   },
   "samples": [
     {
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- `NetworkSceneManager` as an internal wrapper for the `SceneManager.Scene.handle` and swapped all places that use an `int` to represent a `Scene.handle` to instead use the `NetworkSceneManager`. (#3647)\n- Clicking on the Help icon in the inspector will now redirect to the relevant documentation. (#3663)\n- Added a `Set` function onto `NetworkList` that takes an optional parameter that forces an update to be processed even if the current value is equal to the previous value. (#3690)\n\n### Changed\n\n- Improved performance of the NetworkVariable. (#3683)\n- Improved performance around the NetworkBehaviour component. (#3687)\n\n### Fixed\n\n- Distributed authority clients no longer send themselves in the `ClientIds` list when sending a `ChangeOwnershipMessage`. (#3687)\n- Made a variety of small performance improvements. (#3683)"
+    "changelog": "### Added\n\n- `RpcInvokePermission` to control who has permission to invoke specific RPC methods. (#3731)\n- Added NetworkRigidbody documentation section. (#3664)\n- Added new fields to the `SceneMap` struct when using Unity 6.3 or higher. These fields allow referencing scene handles via the new `SceneHandle` struct. (#3734)\n\n### Changed\n\n- Better error message when using generic IEquatable in a generic INetworkSerializable class and updated documentation with workaround. (#3739)\n- The `NetworkManager` functions `GetTransportIdFromClientId` and `GetClientIdFromTransportId` will now return `ulong.MaxValue` when the clientId or transportId do not exist. (#3707)\n- Changed NetworkShow to send a message at the end of the frame and force a NetworkVariable synchronization prior to generating the CreateObjectMessage as opposed to waiting until the next network tick to synchronize the show with the update to NetworkVariables. (#3664)\n- Changed NetworkTransform now synchronizes `NetworkTransform.SwitchTransformSpaceWhenParented` when it is updated by the motion model authority. (#3664)\n- Changed when NetworkObjects pending to be shown to clients can now occur on partial network ticks. If any pending NetworkObjects pending to be shown to clients happens to be ready on a new network tick they still are shown after network variable deltas have been processed. (#3664)\n- Changed the default `NetworkDelivery` used by all messages is now reliable fragmented sequenced with the exception of named, unnamed, and any messages sent with a user specified network delivery type. This assures certain order of operations to be preserved when same call-stack changes are applied to a newly spawned, authority side, NetworkObject. (#3664)\n- Changed NetworkTransform documentation to better reflect the Teleport methods intended usage along with updates to NetworkObject and physics areas of the documentation. (#3664)\n- The first session owner no longer sends two synchronization messages to the service. (#3563)\n- Updated transport dependency of the package to 2.6.0 (#3736)\n\n### Deprecated\n\n- Deprecated all `RequireOwnership` fields around the RPCs in favor of the `RpcInvokePermission`. (#3731)\n- On Unity 6.5 some `SceneMap` fields that use an `int` to represent a `SceneHandle` are deprecated. (#3734)\n\n### Removed\n\n- Removed usage of UNITY_UNET_PRESENT define (#3736)\n\n### Fixed\n\n- Initialization errors with NetworkAnimator. (#3767)\n- Multiple disconnect events from the same transport will no longer disconnect the host. (#3707)\n- Fixed NetworkTransform state synchronization issue when `NetworkTransform.SwitchTransformSpaceWhenParented` is enabled and the associated NetworkObject is parented multiple times in a single frame or within a couple of frames. (#3664)\n- Fixed issue when spawning, parenting, and immediately re-parenting when `NetworkTransform.SwitchTransformSpaceWhenParented` is enabled. (#3664)\n- Fixed issue where the disconnect event and provided message was too generic to know why the disconnect occurred. (#3551)\n- Exception when the network prefab list in the network manager has uninitialized elements. (#3739)"
   },
   "upmCi": {
-    "footprint": "c2cbc9b5dda7341225cfa06bff365bf96244e13d"
+    "footprint": "89474acd1cee612c8c465c60093355d44de69cc8"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.6/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.7/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "a0231c68aec9fed1e039a2091101acd7e6b94764"
+    "revision": "837684437cdd51541167d6ad5e62b801be9f7a76"
   }
 }

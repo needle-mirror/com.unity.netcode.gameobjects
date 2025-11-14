@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Netcode.Runtime;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -14,6 +15,7 @@ namespace Unity.Netcode
     /// The main component of the library
     /// </summary>
     [AddComponentMenu("Netcode/Network Manager", -100)]
+    [HelpURL(HelpUrls.NetworkManager)]
     public class NetworkManager : MonoBehaviour, INetworkUpdateSystem
     {
         /// <summary>
@@ -1154,15 +1156,27 @@ namespace Unity.Netcode
         /// Get the TransportId from the associated ClientId.
         /// </summary>
         /// <param name="clientId">The ClientId to get the TransportId from</param>
-        /// <returns>The TransportId associated with the given ClientId</returns>
-        public ulong GetTransportIdFromClientId(ulong clientId) => ConnectionManager.ClientIdToTransportId(clientId);
+        /// <returns>
+        /// The TransportId associated with the given ClientId if the given clientId is valid; otherwise <see cref="ulong.MaxValue"/>
+        /// </returns>
+        public ulong GetTransportIdFromClientId(ulong clientId)
+        {
+            var (id, success) = ConnectionManager.ClientIdToTransportId(clientId);
+            return success ? id : ulong.MaxValue;
+        }
 
         /// <summary>
         /// Get the ClientId from the associated TransportId.
         /// </summary>
         /// <param name="transportId">The TransportId to get the ClientId from</param>
-        /// <returns>The ClientId from the associated TransportId</returns>
-        public ulong GetClientIdFromTransportId(ulong transportId) => ConnectionManager.TransportIdToClientId(transportId);
+        /// <returns>
+        /// The ClientId from the associated TransportId if the given transportId is valid; otherwise <see cref="ulong.MaxValue"/>
+        /// </returns>
+        public ulong GetClientIdFromTransportId(ulong transportId)
+        {
+            var (id, success) = ConnectionManager.TransportIdToClientId(transportId);
+            return success ? id : ulong.MaxValue;
+        }
 
         /// <summary>
         /// Disconnects the remote client.

@@ -246,6 +246,12 @@ namespace Unity.Netcode.Transports.UTP
             }
 
             /// <summary>
+            /// The port the client will bind to. If 0 (the default), an ephemeral port will be used.
+            /// </summary>
+            [SerializeField]
+            public ushort ClientBindPort;
+
+            /// <summary>
             /// Endpoint (IP address and port) clients will connect to.
             /// </summary>
             /// <remarks>
@@ -350,6 +356,10 @@ namespace Unity.Netcode.Transports.UTP
             public float PacketLoss;
         };
 
+#if UNITY_6000_2_OR_NEWER
+        internal static event Action<EntityId, NetworkDriver> OnDriverInitialized;
+        internal static event Action<EntityId> OnDisposingDriver;
+#endif
         internal static event Action<int, NetworkDriver> TransportInitialized;
         internal static event Action<int> TransportDisposed;
 
@@ -429,7 +439,9 @@ namespace Unity.Netcode.Transports.UTP
                 out m_UnreliableSequencedFragmentedPipeline,
                 out m_ReliableSequencedPipeline);
 #if UNITY_6000_2_OR_NEWER
-            TransportInitialized?.Invoke(GetEntityId(), m_Driver);
+            var entityId = GetEntityId();
+            OnDriverInitialized?.Invoke(entityId, m_Driver);
+            TransportInitialized?.Invoke(entityId.GetHashCode(), m_Driver);
 #else
             TransportInitialized?.Invoke(GetInstanceID(), m_Driver);
 #endif
@@ -450,7 +462,9 @@ namespace Unity.Netcode.Transports.UTP
             m_SendQueue.Clear();
 
 #if UNITY_6000_2_OR_NEWER
-            TransportDisposed?.Invoke(GetEntityId());
+            var entityId = GetEntityId();
+            OnDisposingDriver?.Invoke(entityId);
+            TransportDisposed?.Invoke(entityId.GetHashCode());
 #else
             TransportDisposed?.Invoke(GetInstanceID());
 #endif
@@ -683,6 +697,20 @@ namespace Unity.Netcode.Transports.UTP
             }
 
             InitDriver();
+
+            // Don't bind yet if connecting to a hostname, since we don't know if it will resolve to IPv4 or IPv6.
+            if (serverEndpoint.Family != NetworkFamily.Invalid && ConnectionData.ClientBindPort != 0)
+            {
+                var bindEndpoint = serverEndpoint.Family == NetworkFamily.Ipv6
+                    ? NetworkEndpoint.AnyIpv6.WithPort(ConnectionData.ClientBindPort)
+                    : NetworkEndpoint.AnyIpv4.WithPort(ConnectionData.ClientBindPort);
+                if (m_Driver.Bind(bindEndpoint) != 0)
+                {
+                    Debug.LogError($"Couldn't create socket. Possibly another process is using port {ConnectionData.ClientBindPort}.");
+                    return false;
+                }
+            }
+
             Connect(serverEndpoint);
 
             return true;
@@ -785,19 +813,77 @@ namespace Unity.Netcode.Transports.UTP
             SetRelayServerData(ipAddress, port, allocationId, key, connectionData, hostConnectionData, isSecure);
         }
 
+        // Command line options
+        private const string k_OverridePortArg = "-port";
+        private const string k_OverrideIpAddressArg = "-ip";
+
+        private bool ParseCommandLineOptionsPort(out ushort port)
+        {
+#if UNITY_SERVER && UNITY_DEDICATED_SERVER_ARGUMENTS_PRESENT
+            if (UnityEngine.DedicatedServer.Arguments.Port != null)
+            {
+                port = (ushort)UnityEngine.DedicatedServer.Arguments.Port;
+                return true;
+            }
+#else
+            if (CommandLineOptions.Instance.GetArg(k_OverridePortArg) is string argValue)
+            {
+                port = (ushort)Convert.ChangeType(argValue, typeof(ushort));
+                return true;
+            }
+#endif
+            port = default;
+            return false;
+        }
+
+        private bool ParseCommandLineOptionsAddress(out string ipValue)
+        {
+            if (CommandLineOptions.Instance.GetArg(k_OverrideIpAddressArg) is string argValue)
+            {
+                ipValue = argValue;
+                return true;
+            }
+            ipValue = default;
+            return false;
+        }
+
         /// <summary>
         /// Sets IP and Port information. This will be ignored if using the Unity Relay and you should call <see cref="SetRelayServerData"/>
         /// </summary>
-        /// <param name="ipv4Address">The remote IP address (despite the name, can be an IPv6 address or a domain name)</param>
-        /// <param name="port">The remote port</param>
-        /// <param name="listenAddress">The local listen address</param>
+        /// <param name="ipv4Address">The remote IP address (despite the name, can be an IPv6 address or a domain name).</param>
+        /// <param name="port">The remote port to connect to.</param>
+        /// <param name="listenAddress">The address the server is going to listen on.</param>
         public void SetConnectionData(string ipv4Address, ushort port, string listenAddress = null)
         {
+            SetConnectionData(false, ipv4Address, port, listenAddress);
+        }
+
+        /// <summary>
+        /// Sets IP and Port information. This will be ignored if using the Unity Relay and you should call <see cref="SetRelayServerData"/>
+        /// </summary>
+        /// <param name="ipv4Address">The remote IP address (despite the name, can be an IPv6 address or a domain name).</param>
+        /// <param name="port">The remote port to connect to.</param>
+        /// <param name="listenAddress">The address the server is going to listen on.</param>
+        /// <param name="forceOverrideCommandLineArgs">When true, -port and -ip command line arguments will be ignored.</param>
+        public void SetConnectionData(bool forceOverrideCommandLineArgs, string ipv4Address, ushort port, string listenAddress = null)
+        {
+            m_HasForcedConnectionData = forceOverrideCommandLineArgs;
+            if (!forceOverrideCommandLineArgs && ParseCommandLineOptionsPort(out var commandLinePort))
+            {
+                port = commandLinePort;
+            }
+
+            if (!forceOverrideCommandLineArgs && ParseCommandLineOptionsAddress(out var commandLineIp))
+            {
+                ipv4Address = commandLineIp;
+            }
+
             ConnectionData = new ConnectionAddressData
             {
                 Address = ipv4Address,
                 Port = port,
-                ServerListenAddress = listenAddress ?? ipv4Address
+                ServerListenAddress = listenAddress ?? ipv4Address,
+                ClientBindPort = ConnectionData.ClientBindPort
             };
 
             SetProtocol(ProtocolType.UnityTransport);
@@ -806,8 +892,8 @@ namespace Unity.Netcode.Transports.UTP
         /// <summary>
         /// Sets IP and Port information. This will be ignored if using the Unity Relay and you should call <see cref="SetRelayServerData"/>
         /// </summary>
-        /// <param name="endPoint">The remote end point</param>
-        /// <param name="listenEndPoint">The local listen endpoint</param>
+        /// <param name="endPoint">The remote endpoint the client should connect to.</param>
+        /// <param name="listenEndPoint">The endpoint the server should listen on.</param>
         public void SetConnectionData(NetworkEndpoint endPoint, NetworkEndpoint listenEndPoint = default)
         {
             string serverAddress = endPoint.Address.Split(':')[0];
@@ -1546,6 +1632,11 @@ namespace Unity.Netcode.Transports.UTP
         }
 
         /// <summary>
+        /// This is set in <see cref="SetConnectionData(string, ushort, string, bool)"/>
+        /// </summary>
+        private bool m_HasForcedConnectionData;
+
+        /// <summary>
         /// Initializes the transport
         /// </summary>
         /// <param name="networkManager">The NetworkManager that initialized and owns the transport</param>
@@ -1558,12 +1649,23 @@ namespace Unity.Netcode.Transports.UTP
                 return;
             }
 #endif
-
             m_NetworkManager = networkManager;
 
-            if (m_NetworkManager && m_NetworkManager.PortOverride.Overidden)
+            //If the port doesn't have a forced value and is set by a command line option, override it.
+            if (!m_HasForcedConnectionData && ParseCommandLineOptionsAddress(out var portAsString))
             {
-                ConnectionData.Port = m_NetworkManager.PortOverride.Value;
+                if (m_NetworkManager?.LogLevel <= LogLevel.Developer)
+                {
+                    Debug.Log($"The port is set by a command line option. Using following connection data: {ConnectionData.Address}:{portAsString}");
+                }
+                if (ushort.TryParse(portAsString, out ushort port))
+                {
+                    ConnectionData.Port = port;
+                }
+                else
+                {
+                    Debug.LogError($"The port ({portAsString}) is not a valid unsigned short value!");
+                }
             }
 
             m_RealTimeProvider = m_NetworkManager ? m_NetworkManager.RealTimeProvider : new RealTimeProvider();

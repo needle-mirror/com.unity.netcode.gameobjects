@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+
+## [2.8.0] - 2025-12-15
+
+### Added
+
+- It is now possible to control which port clients will bind to using the `UnityTransport.ConnectionData.ClientBindPort` field. If not set, clients will bind to an ephemeral port (same as before this change). (#3764)
+- Added a flag to override command-line arguments (port and ip) in `SetConnectionData`. (#3760)
+- Added a command-line singleton to parse environment command-line arguments. (#3760)
+- Added `NetworkAnimator.AuthorityMode` which allows you to select whether the `NetworkAnimator` will use a server or owner authority model for state updates (like `NetworkTransform`). (#3586)
+- Added the ability to select which `Animator` parameters the authority `NetworkAnimator` instance should synchronize. This can be done via the inspector view interface or during runtime via `NetworkAnimator.EnableParameterSynchronization`. (#3586)
+
+### Changed
+
+- Improve performance of `ParentSyncMessage`. (#3814)
+- Improve performance of `DestroyObjectMessage`. (#3801)
+- Improve performance of `CreateObjectMessage`. (#3800)
+- First pass of CoreCLR engine API changes. (#3799)
+- Changed when a server is disconnecting a client with a reason it now defers the complete transport disconnect sequence until the end of the frame after the server's transport has sent all pending outbound messages. (#3786)
+- Improve performance of `NetworkTransformState`. (#3770)
+- Changed NetworkAnimator to use the `RpcAttribute` along with the appropriate `SendTo` parameter. (#3586)
+
+### Fixed
+
+- Ensure `NetworkBehaviour.IsSessionOwner` is correctly set when a new session owner is promoted. (#3817)
+- Fixed issue where spawning a player in distributed authority mode via a client, typically session owner, other than the newly connected client and scene management is disabled then the already spawned players will not properly get synchronized by each owning client due to the newly connected client's identifier already being added prior to synchronization. (#3816)
+- Reset extended ownership flags on `NetworkObject` despawn. (#3817)
+- Fixed issues with the "Client-server quickstart for Netcode for GameObjects" script having static methods and properties. (#3787)
+- Fixed issue where a warning message was being logged upon a client disconnecting from a server when the log level is set to developer. (#3786)
+- Fixed issue where the server or host would no longer have access to the transport id to client id table when processing a transport level client disconnect event. (#3786)
+- Fixed issue where invoking an RPC, on another `NetworkBehaviour` associated with the same `NetworkObject` that is ordered before the `NetworkBehaviour` invoking the RPC, during `OnNetworkSpawn` could throw an exception if scene management is disabled. (#3782)
+- Fixed issue where the `Axis to Synchronize` toggles didn't work with multi object editing in `NetworkTransform`. (#3781)
+- Fixed issue where using the dedicated server package would override all attempts to change the port by code. (#3760)
+- Fixed issue with authority animator instance sending itself RPCs. (#3586)
+
 ## [2.7.0] - 2025-10-27
 
 ### Added
@@ -37,6 +71,7 @@ Additional documentation and release notes are available at [Multiplayer Documen
 
 ### Fixed
 
+- CMB service no longer waits for a timeout before disconnecting on an invalid ConnectionRequest. (#3812)
 - Initialization errors with NetworkAnimator. (#3767)
 - Multiple disconnect events from the same transport will no longer disconnect the host. (#3707)
 - Fixed NetworkTransform state synchronization issue when `NetworkTransform.SwitchTransformSpaceWhenParented` is enabled and the associated NetworkObject is parented multiple times in a single frame or within a couple of frames. (#3664)

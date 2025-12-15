@@ -67,7 +67,7 @@ namespace Unity.Netcode.RuntimeTests
                 {
                     approvedClients++;
                 }
-                else if (helper.OwnershipRequestResponseStatus == NetworkObject.OwnershipRequestResponseStatus.RequestInProgress)
+                else if (helper.OwnershipRequestResponseStatus == NetworkObject.OwnershipRequestResponseStatus.RequestInProgress || helper.OwnershipRequestResponseStatus == NetworkObject.OwnershipRequestResponseStatus.Denied)
                 {
                     requestInProgressClients++;
                 }
@@ -279,8 +279,16 @@ namespace Unity.Netcode.RuntimeTests
             var fourthInstance = fourthClient.SpawnManager.SpawnedObjects[networkObjectId];
             var fourthInstanceHelper = fourthInstance.GetComponent<OwnershipPermissionsTestHelper>();
 
+            // Mock race condition scenario where the second instance request arrives before the rest of the requests.
+            // This could be on the same frame all requests are received or where they stagger over several frames.
+            // Until we resolve the CMB service issue where the order in which messages are received does not always
+            // reflect the order in which they are forwarded to their destination (relative to other messages received from
+            // other clients).
+            firstInstanceHelper.OnlyAllowTargetClientId = true;
+            firstInstanceHelper.ClientToAllowOwnership = secondClient.LocalClientId;
+
             // Send out a request from three clients at the same time
-            // The first one sent (and received for this test) gets ownership
+            // The first one received gets ownership
             requestStatus = secondInstance.RequestOwnership();
             Assert.True(requestStatus == NetworkObject.OwnershipRequestStatus.RequestSent, $"Client-{secondClient.LocalClientId} was unable to send a request for ownership because: {requestStatus}!");
             requestStatus = thirdInstance.RequestOwnership();
@@ -291,7 +299,7 @@ namespace Unity.Netcode.RuntimeTests
             // The 2nd and 3rd client should be denied and the 4th client should be approved
             yield return WaitForConditionOrTimeOut(() => WaitForOneClientToBeApproved(new[] { secondInstanceHelper, thirdInstanceHelper, fourthInstanceHelper }));
             AssertOnTimeout("[Targeted Owner] A client received an incorrect response. " +
-                            $"Expected one client to have {NetworkObject.OwnershipRequestResponseStatus.Approved} and the others to have {NetworkObject.OwnershipRequestResponseStatus.RequestInProgress}!."
+                            $"Expected one client to have {NetworkObject.OwnershipRequestResponseStatus.Approved} and the others to have {NetworkObject.OwnershipRequestResponseStatus.RequestInProgress} or {NetworkObject.OwnershipRequestResponseStatus.Denied}!."
                             + $"\n Client-{fourthClient.LocalClientId}: has {fourthInstanceHelper.OwnershipRequestResponseStatus}!"
                             + $"\n Client-{thirdClient.LocalClientId}: has {thirdInstanceHelper.OwnershipRequestResponseStatus}!"
                             + $"\n Client-{secondClient.LocalClientId}: has {secondInstanceHelper.OwnershipRequestResponseStatus}!");
@@ -304,6 +312,9 @@ namespace Unity.Netcode.RuntimeTests
             // Validate the permissions value for all instances are the same.
             yield return WaitForConditionOrTimeOut(ValidatePermissionsOnAllClients);
             AssertOnTimeout($"[Multiple request race condition][Permissions Mismatch] {secondInstance.name}");
+
+            // Reset this value once this part of the test is complete
+            firstInstanceHelper.OnlyAllowTargetClientId = false;
 
             ///////////////////////////////////////////////
             // Test for targeted ownership request:
@@ -486,6 +497,108 @@ namespace Unity.Netcode.RuntimeTests
             finalInstance.SetOwnershipStatus(NetworkObject.OwnershipStatus.RequestRequired, true);
             yield return WaitForConditionOrTimeOut(ValidatePermissionsOnAllClients);
             AssertOnTimeout($"[{newStatus}][Set RequestRequired][Permissions mismatch] {firstClient.name}");
+        }
+
+        [UnityTest]
+        public IEnumerator ResetExtendedOwnershipFlagsOnRespawn()
+        {
+            var extendedFlags = (NetworkObject.OwnershipStatusExtended[])Enum.GetValues(typeof(NetworkObject.OwnershipStatusExtended));
+            Assert.That(extendedFlags.Length, Is.LessThan(NumberOfClients), "This test should have at least one more non-authority client than extended flags!");
+
+            var spawnedObjects = new List<NetworkObject>();
+            while (spawnedObjects.Count <= extendedFlags.Length)
+            {
+                var ownerClient = GetNonAuthorityNetworkManager(spawnedObjects.Count);
+                var spawnedObject = SpawnObject(m_PermissionsObject, ownerClient).GetComponent<NetworkObject>();
+                spawnedObject.SetOwnershipStatus(NetworkObject.OwnershipStatus.RequestRequired, true);
+                spawnedObjects.Add(spawnedObject);
+            }
+
+            yield return WaitForSpawnedOnAllOrTimeOut(spawnedObjects);
+            AssertOnTimeout("[InitialSpawn] Not all objects are spawned on all clients!");
+
+            for (int i = 0; i < extendedFlags.Length; i++)
+            {
+                var flag = extendedFlags[i];
+                var obj = spawnedObjects[i];
+                obj.AddOwnershipExtended(flag);
+                obj.SendOwnershipStatusUpdate();
+
+                m_ObjectToValidate = obj;
+                yield return WaitForConditionOrTimeOut(ValidatePermissionsOnAllClients);
+                AssertOnTimeout($"[{flag}] Not all clients have set the permission on the object!");
+            }
+
+            // Despawn the objects
+            foreach (var networkObject in spawnedObjects)
+            {
+                networkObject.Despawn(false);
+            }
+
+            yield return WaitForDespawnedOnAllOrTimeOut(spawnedObjects);
+            AssertOnTimeout("Not all clients have despawned all objects!");
+
+            // Respawn the objects
+            foreach (var networkObject in spawnedObjects)
+            {
+                networkObject.Spawn();
+            }
+
+            yield return WaitForSpawnedOnAllOrTimeOut(spawnedObjects);
+            AssertOnTimeout("[ReSpawn] Not all objects are spawned on all clients!");
+
+            // Requesting ownership should work as expected
+            var nonAuthorityIndex = 1; // Start the index at one more than the initial ownership
+            var objectToOwner = new Dictionary<NetworkObject, NetworkManager>();
+            foreach (var networkObject in spawnedObjects)
+            {
+                var nextOwner = GetNonAuthorityNetworkManager(nonAuthorityIndex++);
+                Assert.That(nextOwner.LocalClientId, Is.Not.EqualTo(networkObject.OwnerClientId));
+                Assert.IsTrue(nextOwner.SpawnManager.SpawnedObjects.TryGetValue(networkObject.NetworkObjectId, out var nextOwnerInstance));
+                Assert.That(nextOwnerInstance, Is.Not.Null);
+
+                var requestStatus = nextOwnerInstance.RequestOwnership();
+                Assert.That(requestStatus, Is.EqualTo(NetworkObject.OwnershipRequestStatus.RequestSent));
+
+                objectToOwner.Add(networkObject, nextOwner);
+            }
+
+            yield return WaitForConditionOrTimeOut(errorLog =>
+            {
+                foreach (var client in m_NetworkManagers)
+                {
+                    foreach (var (networkObject, expectedOwner) in objectToOwner)
+                    {
+                        if (!client.SpawnManager.SpawnedObjects.TryGetValue(networkObject.NetworkObjectId, out var clientInstance))
+                        {
+                            errorLog.AppendLine($"Object-{networkObject.NetworkObjectId} is not spawned on client-{client.LocalClientId}");
+                            return false;
+                        }
+
+                        if (clientInstance.OwnerClientId != expectedOwner.LocalClientId)
+                        {
+                            errorLog.AppendLine($"Client-{client.LocalClientId} has the incorrect owner for Object-{networkObject.NetworkObjectId}");
+                            return false;
+                        }
+
+                        if (clientInstance.IsOwner != (client == expectedOwner))
+                        {
+                            errorLog.AppendLine($"Client-{client.LocalClientId} has the incorrect IsOwner for Object-{networkObject.NetworkObjectId}");
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            });
+            AssertOnTimeout("Some ownership requests failed!");
+
+            foreach (var networkObject in spawnedObjects)
+            {
+                m_ObjectToValidate = networkObject;
+                yield return WaitForConditionOrTimeOut(ValidatePermissionsOnAllClients);
+                AssertOnTimeout($"[Object-{networkObject.NetworkObjectId}] Not all clients have set the permission on the object!");
+            }
         }
 
         internal class OwnershipPermissionsTestHelper : NetworkBehaviour

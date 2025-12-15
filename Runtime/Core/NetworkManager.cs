@@ -49,10 +49,8 @@ namespace Unity.Netcode
         // RuntimeAccessModifiersILPP will make this `public`
         internal static readonly Dictionary<uint, RpcReceiveHandler> __rpc_func_table = new Dictionary<uint, RpcReceiveHandler>();
 
-#if DEVELOPMENT_BUILD || UNITY_EDITOR || UNITY_MP_TOOLS_NET_STATS_MONITOR_ENABLED_IN_RELEASE
-        // RuntimeAccessModifiersILPP will make this `public`
+        // RuntimeAccessModifiersILPP will make this `public` (legacy table should be removed in v3.x.x)
         internal static readonly Dictionary<uint, string> __rpc_name_table = new Dictionary<uint, string>();
-#endif
 
 #pragma warning restore IDE1006 // restore naming rule violation check
 
@@ -218,19 +216,21 @@ namespace Unity.Netcode
 
         internal void SetSessionOwner(ulong sessionOwner)
         {
-            var previousSessionOwner = CurrentSessionOwner;
             CurrentSessionOwner = sessionOwner;
-            LocalClient.IsSessionOwner = LocalClientId == sessionOwner;
-            if (LocalClient.IsSessionOwner)
+            var isSessionOwner = LocalClientId == sessionOwner;
+            LocalClient.IsSessionOwner = isSessionOwner;
+
+            foreach (var networkObject in SpawnManager.SpawnedObjects.Values)
             {
-                foreach (var networkObjectEntry in SpawnManager.SpawnedObjects)
+                if (isSessionOwner)
                 {
-                    var networkObject = networkObjectEntry.Value;
                     if (networkObject.IsOwnershipSessionOwner && networkObject.OwnerClientId != LocalClientId)
                     {
                         SpawnManager.ChangeOwnership(networkObject, LocalClientId, true);
                     }
                 }
+
+                networkObject.InvokeSessionOwnerPromoted(isSessionOwner);
             }
 
             OnSessionOwnerPromoted?.Invoke(sessionOwner);
@@ -313,11 +313,11 @@ namespace Unity.Netcode
 
         private void UpdateTopology()
         {
-            var transportTopology = IsListening ? NetworkConfig.NetworkTransport.CurrentTopology() : NetworkConfig.NetworkTopology;
+            var transportTopology = IsListening && IsConnectedClient ? NetworkConfig.NetworkTransport.CurrentTopology() : NetworkConfig.NetworkTopology;
             if (transportTopology != NetworkConfig.NetworkTopology)
             {
-                NetworkLog.LogErrorServer($"[Topology Mismatch] Transport detected an issue with the topology ({transportTopology} | {NetworkConfig.NetworkTopology}) usage or setting! Disconnecting from session.");
-                Shutdown();
+                NetworkLog.LogErrorServer($"[Topology Mismatch][{transportTopology}:{transportTopology.GetType().Name}][NetworkManager.NetworkConfig:{NetworkConfig.NetworkTopology}] Transport detected an issue with the topology usage or setting! Disconnecting from session.");
+                Shutdown(true);
             }
             else
             {
@@ -348,7 +348,6 @@ namespace Unity.Netcode
                         AnticipationSystem.SetupForUpdate();
                         MessageManager.ProcessIncomingMessageQueue();
 
-                        MessageManager.CleanupDisconnectedClients();
                         AnticipationSystem.ProcessReanticipation();
 #if COM_UNITY_MODULES_PHYSICS || COM_UNITY_MODULES_PHYSICS2D
                         foreach (var networkObjectEntry in NetworkTransformFixedUpdate)
@@ -480,6 +479,18 @@ namespace Unity.Netcode
                         // This is "ok" to invoke when not processing messages since it is just cleaning up messages that never got handled within their timeout period.
                         DeferredMessageManager.CleanupStaleTriggers();
 
+                        if (IsServer)
+                        {
+                            // Process any pending clients that need to be disconnected.
+                            // This is typically a disconnect with reason scenario where
+                            // we want the disconnect reason message to be sent prior to
+                            // completely shutting down the endpoint.
+                            ConnectionManager.ProcessClientsToDisconnect();
+                        }
+
+                        // Clean up disconnected clients last
+                        MessageManager.CleanupDisconnectedClients();
+
                         if (m_ShuttingDown)
                         {
                             // Host-server will disconnect any connected clients prior to finalizing its shutdown
@@ -493,6 +504,7 @@ namespace Unity.Netcode
                                 ShutdownInternal();
                             }
                         }
+
                     }
                     break;
             }
@@ -976,19 +988,6 @@ namespace Unity.Netcode
         internal NetworkConnectionManager ConnectionManager = new NetworkConnectionManager();
         internal NetworkMessageManager MessageManager = null;
 
-        internal struct Override<T>
-        {
-            private T m_Value;
-            public bool Overidden { get; private set; }
-            internal T Value
-            {
-                get { return Overidden ? m_Value : default(T); }
-                set { Overidden = true; m_Value = value; }
-            }
-        };
-
-        internal Override<ushort> PortOverride;
-
         /// <summary>
         /// Determines if the NetworkManager's GameObject is parented under another GameObject and
         /// notifies the user that this is not allowed for the NetworkManager.
@@ -1167,8 +1166,6 @@ namespace Unity.Netcode
             {
                 return;
             }
-
-            ParseCommandLineOptions();
 
             if (NetworkConfig.NetworkTransport == null)
             {
@@ -1737,40 +1734,6 @@ namespace Unity.Netcode
             }
 #if UNITY_EDITOR
             EditorApplication.playModeStateChanged -= ModeChanged;
-#endif
-        }
-
-        // Command line options
-        private const string k_OverridePortArg = "-port";
-
-        private string GetArg(string[] commandLineArgs, string arg)
-        {
-            var argIndex = Array.IndexOf(commandLineArgs, arg);
-            if (argIndex >= 0 && argIndex < commandLineArgs.Length - 1)
-            {
-                return commandLineArgs[argIndex + 1];
-            }
-
-            return null;
-        }
-
-        private void ParseArg<T>(string arg, ref Override<T> value)
-        {
-            if (GetArg(Environment.GetCommandLineArgs(), arg) is string argValue)
-            {
-                value.Value = (T)Convert.ChangeType(argValue, typeof(T));
-            }
-        }
-
-        private void ParseCommandLineOptions()
-        {
-#if UNITY_SERVER && UNITY_DEDICATED_SERVER_ARGUMENTS_PRESENT
-            if ( UnityEngine.DedicatedServer.Arguments.Port != null)
-            {
-                PortOverride.Value = (ushort)UnityEngine.DedicatedServer.Arguments.Port;
-            }
-#else
-            ParseArg(k_OverridePortArg, ref PortOverride);
 #endif
         }
 

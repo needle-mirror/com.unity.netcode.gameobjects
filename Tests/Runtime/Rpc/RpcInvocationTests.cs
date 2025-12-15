@@ -1,3 +1,4 @@
+#if MULTIPLAYER_TOOLS && (DEVELOPMENT_BUILD || UNITY_EDITOR || UNITY_MP_TOOLS_NET_STATS_MONITOR_ENABLED_IN_RELEASE)
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -21,9 +22,6 @@ namespace Unity.Netcode.RuntimeTests
         private GameObject m_Prefab;
 
         private Dictionary<NetworkManager, InvokePermissionBehaviour> m_InvokeInstances = new();
-
-        // TODO: [CmbServiceTests] Enable once the CMB service fixes the client spoofing issue.
-        protected override bool UseCMBService() => false;
 
         protected override void OnServerAndClientsCreated()
         {
@@ -513,3 +511,4 @@ namespace Unity.Netcode.RuntimeTests
         }
     }
 }
+#endif

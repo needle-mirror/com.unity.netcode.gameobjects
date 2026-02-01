@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.8.1",
+  "version": "2.9.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Fixed\n\n- Fixed issue when using a client-server topology where a `NetworkList` with owner write permissions was resetting sent time and dirty flags after having been spawned on owning clients that were not the spawn authority. (#3850)"
+    "changelog": "### Added\n\n- Added stricter checks on `InSpawned` within `NetworkObject`. (#3831)\n- Added a new `InvalidOperation` status to `OwnershipRequestStatus`. (#3831)\n\n### Changed\n\n- Ensure logs in `NetworkObject` log the `NetworkObject.name` wherever possible. (#3831)\n- Improved performance of NetworkBehaviour ILPostProcessor by omitting unnecessary type and assembly resolutions. (#3827)\n- Improve performance of `NetworkObject`. (#3820, #3831)\n- If the Unity Transport Disconnect Timeout is set to 0 in the Editor, the timeout will be entirely disabled. (#3810)\n\n### Fixed\n\n- Duplicate transport connection events for the same connection will now do nothing. (#3863)\n- Fixed memory leak in `NetworkAnimator` on clients where `RpcTarget` groups were not being properly disposed due to incorrect type casting of `ProxyRpcTargetGroup` to `RpcTargetGroup`.\n- Fixed issue when using a client-server topology where a `NetworkList` with owner write permissions was resetting sent time and dirty flags after having been spawned on owning clients that were not the spawn authority. (#3850)\n- Fixed an integer overflow that occurred when configuring a large disconnect timeout with Unity Transport. (#3810)"
   },
   "upmCi": {
-    "footprint": "bfa5f7d3b335b75851fd4104ca142f7bf52aec11"
+    "footprint": "aa3beac74d0f1af76658f094d6d5fece7d5fe312"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.8/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.9/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "b2e11c30b8a865361d9b4b4af751bf611036f253"
+    "revision": "83a58528b180716fad2a178e42156573d3e13d25"
   }
 }

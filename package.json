@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.9.2",
+  "version": "2.10.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Fixed\n\n- Fixed issue where `NetworkVariable` was not properly synchronizing to changes made by the spawn and write authority during `OnNetworkSpawn` and `OnNetworkPostSpawn`. (#3878)"
+    "changelog": "### Added\n\n- The `NetworkMetricsPipelineStage` for Unity Transport is now part of the public API. This allows using it in custom implementations of `INetworkStreamDriverConstructor` that want to maintain compatibility with the multiplayer tools package. (#3853)\n\n### Changed\n\n- Updating usage of deprecated `FindObjectsByType(FindObjectsSortMode)` and enum `FindObjectSortMode` in 6000.4 and 6000.5. (#3857)\n\n### Fixed\n\n- Fixed `NetworkTransform` issue where a user could enable UseUnreliableDeltas while SwitchTransformSpaceWhenParented was also enabled (and vice versa). (#3875)\n- Fixed issue where `NetworkVariable` was not properly synchronizing to changes made by the spawn and write authority during `OnNetworkSpawn` and `OnNetworkPostSpawn`. (#3878)\n- Fixed issue where `NetworkManager` was not cleaning itself up if an exception was thrown while starting. (#3864)\n- Prevented a `NullReferenceException` in `UnityTransport` when using a custom `INetworkStreamDriverConstructor` that doesn't use all the default pipelines and the multiplayer tools package is installed. (#3853)"
   },
   "upmCi": {
-    "footprint": "172d2d64e65353ab0828fb7ec72a033218a904d7"
+    "footprint": "e5185a97d7a6bcd6450297ee5e889af4f6db0106"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.9/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.10/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "f44f7be87c05af3cc78eef5eac501eae7a8648d6"
+    "revision": "23014fe8682ec4e71c5da96e4f7b80b00a2e13ad"
   }
 }

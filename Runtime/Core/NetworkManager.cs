@@ -951,6 +951,7 @@ namespace Unity.Netcode
         /// <see cref="Unity.Netcode.RpcTarget.Not{T}(T)"/>
         /// </summary>
 #pragma warning restore IDE0001
+        [NonSerialized]
         public RpcTarget RpcTarget;
 
         /// <summary>
@@ -1323,7 +1324,17 @@ namespace Unity.Netcode
             }
             ConnectionManager.LocalClient.ClientId = ServerClientId;
 
-            Initialize(true);
+            try
+            {
+                Initialize(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                // Always shutdown to assure everything is cleaned up
+                ShutdownInternal();
+                return false;
+            }
 
             try
             {
@@ -1342,11 +1353,12 @@ namespace Unity.Netcode
 
                 ConnectionManager.TransportFailureEventHandler(true);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                ConnectionManager.LocalClient.SetRole(false, false);
+                Debug.LogException(ex);
+                // Always shutdown to assure everything is cleaned up
+                ShutdownInternal();
                 IsListening = false;
-                throw;
             }
 
             return IsListening;
@@ -1373,7 +1385,16 @@ namespace Unity.Netcode
                 return false;
             }
 
-            Initialize(false);
+            try
+            {
+                Initialize(false);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                ShutdownInternal();
+                return false;
+            }
 
             try
             {
@@ -1391,7 +1412,7 @@ namespace Unity.Netcode
             catch (Exception ex)
             {
                 Debug.LogException(ex);
-                ConnectionManager.LocalClient.SetRole(false, false);
+                ShutdownInternal();
                 IsListening = false;
             }
 
@@ -1419,7 +1440,18 @@ namespace Unity.Netcode
                 return false;
             }
 
-            Initialize(true);
+            try
+            {
+                Initialize(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                // Always shutdown to assure everything is cleaned up
+                ShutdownInternal();
+                return false;
+            }
+
             try
             {
                 IsListening = NetworkConfig.NetworkTransport.StartServer();
@@ -1437,7 +1469,8 @@ namespace Unity.Netcode
             catch (Exception ex)
             {
                 Debug.LogException(ex);
-                ConnectionManager.LocalClient.SetRole(false, false);
+                // Always shutdown to assure everything is cleaned up
+                ShutdownInternal();
                 IsListening = false;
             }
 

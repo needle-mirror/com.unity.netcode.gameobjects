@@ -6,17 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
-## [2.9.2] - 2025-02-11
+## [2.10.0] - 2026-03-01
 
-### Fixed
+### Added
 
-- Fixed issue where `NetworkVariable` was not properly synchronizing to changes made by the spawn and write authority during `OnNetworkSpawn` and `OnNetworkPostSpawn`. (#3878)
-
-## [2.9.1] - 2026-02-05
+- The `NetworkMetricsPipelineStage` for Unity Transport is now part of the public API. This allows using it in custom implementations of `INetworkStreamDriverConstructor` that want to maintain compatibility with the multiplayer tools package. (#3853)
 
 ### Changed
 
 - Updating usage of deprecated `FindObjectsByType(FindObjectsSortMode)` and enum `FindObjectSortMode` in 6000.4 and 6000.5. (#3857)
+
+### Fixed
+
+- Fixed `NetworkTransform` issue where a user could enable UseUnreliableDeltas while SwitchTransformSpaceWhenParented was also enabled (and vice versa). (#3875)
+- Fixed issue where `NetworkVariable` was not properly synchronizing to changes made by the spawn and write authority during `OnNetworkSpawn` and `OnNetworkPostSpawn`. (#3878)
+- Fixed issue where `NetworkManager` was not cleaning itself up if an exception was thrown while starting. (#3864)
+- Prevented a `NullReferenceException` in `UnityTransport` when using a custom `INetworkStreamDriverConstructor` that doesn't use all the default pipelines and the multiplayer tools package is installed. (#3853)
 
 ## [2.9.0] - 2026-02-01
 

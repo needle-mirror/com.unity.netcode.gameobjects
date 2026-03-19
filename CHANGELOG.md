@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 Additional documentation and release notes are available at [Multiplayer Documentation](https://docs-multiplayer.unity3d.com).
 
+## [2.11.0] - 2026-03-19
+
+### Added
+
+- Added a `WebSocketPath` field to `UnityTransport.ConnectionData` (which also shows up in the inspector if "Use WebSockets" is checked) that controls the path clients will connect to and servers/hosts will listen on when using WebSockets. (#3901)
+- `NetworkTransport.EarlyUpdate` and `NetworkTransport.PostLateUpdate` are now public. For the vast majority of users, there's really no point in ever calling those methods directly (the `NetworkManager` handles it). It's only useful if wrapping transports outside of NGO. (#3890)
+
+### Removed
+- Removed un-needed exceptions on `NetworkObject.cs`. (#3867)
+
+### Fixed
+
+- Fixed issue where an attachable could log an error upon being de-spawned during shutdown. (#3895)
+- NestedNetworkVariables initialized with no value no longer throw an error. (#3891)
+- Fixed `NetworkShow` behavior when it is called twice. (#3867)
+
+### Obsolete
+- `NotListeningException` is now marked as obsolete as it is no longer used internally. (#3867)
+
 ## [2.10.0] - 2026-03-01
 
 ### Added

@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- The `NetworkMetricsPipelineStage` for Unity Transport is now part of the public API. This allows using it in custom implementations of `INetworkStreamDriverConstructor` that want to maintain compatibility with the multiplayer tools package. (#3853)\n\n### Changed\n\n- Updating usage of deprecated `FindObjectsByType(FindObjectsSortMode)` and enum `FindObjectSortMode` in 6000.4 and 6000.5. (#3857)\n\n### Fixed\n\n- Fixed `NetworkTransform` issue where a user could enable UseUnreliableDeltas while SwitchTransformSpaceWhenParented was also enabled (and vice versa). (#3875)\n- Fixed issue where `NetworkVariable` was not properly synchronizing to changes made by the spawn and write authority during `OnNetworkSpawn` and `OnNetworkPostSpawn`. (#3878)\n- Fixed issue where `NetworkManager` was not cleaning itself up if an exception was thrown while starting. (#3864)\n- Prevented a `NullReferenceException` in `UnityTransport` when using a custom `INetworkStreamDriverConstructor` that doesn't use all the default pipelines and the multiplayer tools package is installed. (#3853)"
+    "changelog": "### Added\n\n- Added a `WebSocketPath` field to `UnityTransport.ConnectionData` (which also shows up in the inspector if \"Use WebSockets\" is checked) that controls the path clients will connect to and servers/hosts will listen on when using WebSockets. (#3901)\n- `NetworkTransport.EarlyUpdate` and `NetworkTransport.PostLateUpdate` are now public. For the vast majority of users, there's really no point in ever calling those methods directly (the `NetworkManager` handles it). It's only useful if wrapping transports outside of NGO. (#3890)\n\n### Removed\n- Removed un-needed exceptions on `NetworkObject.cs`. (#3867)\n\n### Fixed\n\n- Fixed issue where an attachable could log an error upon being de-spawned during shutdown. (#3895)\n- NestedNetworkVariables initialized with no value no longer throw an error. (#3891)\n- Fixed `NetworkShow` behavior when it is called twice. (#3867)\n\n### Obsolete\n- `NotListeningException` is now marked as obsolete as it is no longer used internally. (#3867)"
   },
   "upmCi": {
-    "footprint": "e5185a97d7a6bcd6450297ee5e889af4f6db0106"
+    "footprint": "82ba784145e8c0265f9447f3b807af77790c7072"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.10/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.11/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "23014fe8682ec4e71c5da96e4f7b80b00a2e13ad"
+    "revision": "bf3e6f70763c228026a531e46f7e7f1efc27cf4c"
   }
 }

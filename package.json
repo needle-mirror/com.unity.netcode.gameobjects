@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.11.1",
+  "version": "2.11.2",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- Better context aware logging (#3944)\n\n### Changed\n\n- Improve handling of destroyed NetworkBehaviours. The collection of which NetworkBehaviours belong to a NetworkObject is now a Dictionary giving stable lookup. (#3953)\n- Hardened error handling and recovery during `NetworkObject` spawn. (#3941)\n- Replaced Debug usage by NetcodeLog on `NetworkSpawnManager` and `NetworkObject`. (#3933)\n- Improved performance of `NetworkBehaviour`. (#3915)\n- Improved performance of `NetworkTransform`. (#3907)\n- Improved performance of `NetworkRigidbodyBase`. (#3906)\n- Improved performance of `NetworkAnimator`. (#3905)\n- Small cleanup and replaced Debug usage by NetcodeLog on `NetworkSpawnManager` and `NetworkObject`. (#3933)\n\n### Removed\n\n- Removed un-needed exceptions on `NetworkSpawnManager`. (#3933)\n\n### Fixed\n\n- Fixed issue where either an `AttachableBehaviour` or an `AttachableNode` can throw an exception if they are attached during a scene unload where one of the two persists the scene unload event and the other does not. (#3931)\n- Fixed issue where attempts to use `NetworkLog` when there is no `NetworkManager` instance would result in an exception. (#3917)\n- CreateObject and DestroyObject messages will now be properly deferred while the client is still connecting (#3941)\n- Resources will be properly cleaned up when an object spawn fails (#3941)\n- Non-authority client will now always have the `OnSceneEvent` callback triggered with the `Synchronize` event when starting to process the `Synchronize` message from the scene authority (#3941)"
+    "changelog": "### Fixed\n\n- Improve handling of destroyed NetworkBehaviours. The collection of which NetworkBehaviours belong to a NetworkObject is now a Dictionary giving stable lookup. (#3953)"
   },
   "upmCi": {
-    "footprint": "a1e8cf477ce1a1e3f0fc815a101353e9af16b619"
+    "footprint": "d704b64b179b7759e0939d14d6fd0f51ea3436f9"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.11/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "f7a06b4501a5dd89b4f38f1c81963cdd1f45b869"
+    "revision": "184f6ccfd4a5ba0ceb5bd7855228e715948d3236"
   }
 }

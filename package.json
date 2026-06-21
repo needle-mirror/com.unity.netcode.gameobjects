@@ -2,7 +2,7 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "unity": "6000.0",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
@@ -16,15 +16,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Added\n\n- Added a new variant of `UnityTransport.GetDefaultPipelineConfigurations` that takes a reference to the created `NetworkDriver`. This will register all pipeline stages that `UnityTransport` requires, removing the need to manually register them in your own custom driver constructor. (#3980)\n\n### Changed\n\n- `NetworkMetricsPipelineStage` is now defined even when the multiplayer tools package is not installed, removing the need to guard its registration behind a version define when using a custom driver in `UnityTransport`. (#3980)\n\n### Deprecated\n\n- Deprecated a number of methods that were no longer valid or being used. (#3987)\n\n### [2.11.2] - 2026-05-01\n\n### Fixed\n\n- Fixed issue where if the `NetworkManager` player prefab is not assigned an exception is thrown upon starting a host and/or when a client joins. (#3965)"
+    "changelog": "### Added\n\n- Added support for Unity's Fast Enter Play Mode with domain reload disabled. (#3956)\n- RPC messages now log any time they are not processed. (#3994)\n\n### Changed\n\n- Changed replaced define usages of `DEVELOPMENT_BUILD || UNITY_EDITOR` and a few niche uses of `DEVELOPMENT_BUILD` with `DEBUG`. (#4006)\n\n### Deprecated\n\n- Deprecated the nullable boolean `NetworkObject.IsSceneObject` and introduced `NetworkObject.InScenePlaced`. (#4000)"
   },
   "upmCi": {
-    "footprint": "145f5f82c593b7911ddcb129dbfd88955ab7e9b8"
+    "footprint": "6327932606f8c0ed859cada70d18dea4fd5a017a"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.12/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.13/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "d6ebf432869cf7443ee603dd3990dc8f0e1421cf"
+    "revision": "d1b3fc47766e2fbd1666aba6f7c8c78bdafac193"
   }
 }

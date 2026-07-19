@@ -2515,8 +2515,8 @@ namespace Unity.Netcode.Components
                     }
                 }
             }
-            else // Just apply the full local scale when synchronizing
-            if (SynchronizeScale)
+            // Just apply the full local scale when synchronizing
+            else if (SynchronizeScale)
             {
                 var localScale = CachedTransform.localScale;
                 if (!UseHalfFloatPrecision)
@@ -3488,8 +3488,8 @@ namespace Unity.Netcode.Components
                         child.InternalInitialization();
                     }
                 }
-                else // Otherwise, just run through standard synchronization of this instance
-                if (!CanCommitToTransform)
+                // Otherwise, just run through standard synchronization of this instance
+                else if (!CanCommitToTransform)
                 {
                     ApplySynchronization();
                     InternalInitialization();

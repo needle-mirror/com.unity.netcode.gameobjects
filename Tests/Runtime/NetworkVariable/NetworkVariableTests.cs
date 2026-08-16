@@ -251,9 +251,17 @@ namespace Unity.Netcode.RuntimeTests
             m_EnsureLengthSafety = serialization == Serialization.EnsureLengthSafety;
         }
 
+        private bool m_CanStart = false;
+
         protected override bool CanStartServerAndClients()
         {
-            return false;
+            return m_CanStart;
+        }
+
+        protected override void OnInlineSetup()
+        {
+            m_CanStart = false;
+            base.OnInlineSetup();
         }
 
         protected override void OnOneTimeSetup()
@@ -341,23 +349,33 @@ namespace Unity.Netcode.RuntimeTests
         /// Runs generalized tests on all predefined NetworkVariable types
         /// </summary>
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void AllNetworkVariableTypes([Values] HostOrServer useHost)
         {
-            // Create, instantiate, and host
-            // This would normally go in Setup, but since every other test but this one
-            //  uses NetworkManagerHelper, and it does its own NetworkManager setup / teardown,
-            //  for now we put this within this one test until we migrate it to MIH
-            Assert.IsTrue(NetworkManagerHelper.StartNetworkManager(out NetworkManager server, useHost == HostOrServer.Host ? NetworkManagerHelper.NetworkManagerOperatingMode.Host : NetworkManagerHelper.NetworkManagerOperatingMode.Server));
+            var prefabToSpawn = CreateNetworkObjectPrefab("NetVarTest");
+            prefabToSpawn.AddComponent<NetworkVariableTestComponent>();
 
-            Assert.IsTrue(server.IsHost == (useHost == HostOrServer.Host), $"{nameof(useHost)} does not match the server.IsHost value!");
+            m_CanStart = true;
+            StartServerAndClientsWithTimeTravel();
+            var authority = GetAuthorityNetworkManager();
 
-            Guid gameObjectId = NetworkManagerHelper.AddGameNetworkObject("NetworkVariableTestComponent");
+            // Shutdown the other clients
+            foreach (var networkManager in m_NetworkManagers)
+            {
+                if (networkManager == authority)
+                {
+                    continue;
+                }
+                StopOneClientWithTimeTravel(networkManager);
+            }
 
-            var networkVariableTestComponent = NetworkManagerHelper.AddComponentToObject<NetworkVariableTestComponent>(gameObjectId);
+            var instance = SpawnObject(prefabToSpawn, authority);
+            var networkVariableTestComponent = instance.GetComponent<NetworkVariableTestComponent>();
 
-            NetworkManagerHelper.SpawnNetworkObject(gameObjectId);
+            Assert.IsTrue(networkVariableTestComponent.IsSpawned, $"Failed to spawn {instance.name}!");
 
             // Start Testing
+            networkVariableTestComponent.InitializeTest();
             networkVariableTestComponent.EnableTesting = true;
 
             var success = WaitForConditionOrTimeOutWithTimeTravel(() => true == networkVariableTestComponent.IsTestComplete());
@@ -369,16 +387,12 @@ namespace Unity.Netcode.RuntimeTests
             Assert.IsTrue(networkVariableTestComponent.DidAllValuesChange());
             networkVariableTestComponent.AssertAllValuesAreCorrect();
 
-            // Disable this once we are done.
-            networkVariableTestComponent.gameObject.SetActive(false);
-
-            // This would normally go in Teardown, but since every other test but this one
-            //  uses NetworkManagerHelper, and it does its own NetworkManager setup / teardown,
-            //  for now we put this within this one test until we migrate it to MIH
-            NetworkManagerHelper.ShutdownNetworkManager();
+            // Stop the authority NetworkManager instance
+            StopOneClientWithTimeTravel(authority);
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void ClientWritePermissionTest([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -393,6 +407,7 @@ namespace Unity.Netcode.RuntimeTests
         /// Runs tests that network variables sync on client whatever the local value of <see cref="Time.timeScale"/>.
         /// </summary>
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void NetworkVariableSync_WithDifferentTimeScale([Values] HostOrServer useHost, [Values(0.0f, 1.0f, 2.0f)] float timeScale)
         {
             Time.timeScale = timeScale;
@@ -407,6 +422,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void FixedString32Test([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -418,6 +434,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableClass([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -437,6 +454,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableTemplateClass([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -455,6 +473,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableStruct([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -473,6 +492,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableTemplateStruct([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -491,6 +511,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableTemplateBehaviourClass([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -513,6 +534,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableTemplateBehaviourClassNotReferencedElsewhere([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -531,6 +553,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableTemplateBehaviourStruct([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -549,6 +572,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableEnum([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -566,6 +590,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestINetworkSerializableClassCallsNetworkSerialize([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -584,6 +609,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestINetworkSerializableStructCallsNetworkSerialize([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -598,6 +624,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void TestCustomGenericSerialization()
         {
             // Just verifies that the ILPP codegen initialized these values for this type.
@@ -651,6 +678,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void TestUnsupportedManagedTypesWithUserSerializationDoNotThrowExceptions()
         {
             var variable = new NetworkVariable<string>();
@@ -706,6 +734,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void TestTypesReferencedInSubclassSerializeSuccessfully()
         {
             var variable = new NetworkVariableSubclass<TemplatedValueOnlyReferencedByNetworkVariableSubclass<int>>();
@@ -721,6 +750,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void TestUnsupportedUnmanagedTypesWithUserSerializationDoNotThrowExceptions()
         {
             var variable = new NetworkVariable<Guid>();
@@ -794,6 +824,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149591", "NGO multi-instance test sessions fail to start/connect or time out on CoreCLR")]
         public void TestNetworkVariableChangeAndReturnInSameFrame([Values] HostOrServer useHost)
         {
             InitializeServerAndClients(useHost);
@@ -1351,6 +1382,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 #endif
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void WhenSerializingAndDeserializingValueTypeNetworkVariables_ValuesAreSerializedCorrectly(
 
             [Values(typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint),
@@ -1518,6 +1550,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void WhenSerializingAndDeserializingValueTypeNativeArrayNetworkVariables_ValuesAreSerializedCorrectly(
 
             [Values(typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint),
@@ -1768,7 +1801,7 @@ namespace Unity.Netcode.RuntimeTests
 
         public unsafe T RandGenBytes<T>(System.Random rand) where T : unmanaged
         {
-            var t = new T();
+            var t = default(T);
             T* tPtr = &t;
             var s = new Span<byte>(tPtr, sizeof(T));
             rand.NextBytes(s);
@@ -1861,6 +1894,7 @@ namespace Unity.Netcode.RuntimeTests
         [Test]
         [UnityPlatform(exclude = new[] { RuntimePlatform.Android, RuntimePlatform.IPhonePlayer })] // Ignored test tracked in MTT-11343
         [Repeat(5)]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void WhenSerializingAndDeserializingVeryLargeValueTypeNativeArrayNetworkVariables_ValuesAreSerializedCorrectly(
 
             [Values(typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint),
@@ -2323,6 +2357,7 @@ namespace Unity.Netcode.RuntimeTests
         [Test]
         [UnityPlatform(exclude = new[] { RuntimePlatform.Android, RuntimePlatform.IPhonePlayer })] // Ignored test tracked in MTT-11343
         [Repeat(5)]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void WhenSerializingAndDeserializingVeryLargeListNetworkVariables_ValuesAreSerializedCorrectly(
 
             [Values(typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint),
@@ -2518,6 +2553,7 @@ namespace Unity.Netcode.RuntimeTests
         [Test]
         [UnityPlatform(exclude = new[] { RuntimePlatform.Android, RuntimePlatform.IPhonePlayer })] // Ignored test tracked in MTT-11343
         [Repeat(5)]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void WhenSerializingAndDeserializingVeryLargeHashSetNetworkVariables_ValuesAreSerializedCorrectly(
 
             [Values(typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint),
@@ -2682,6 +2718,7 @@ namespace Unity.Netcode.RuntimeTests
         [Test]
         [UnityPlatform(exclude = new[] { RuntimePlatform.Android, RuntimePlatform.IPhonePlayer })] // Ignored test tracked in MTT-11343
         [Repeat(5)]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void WhenSerializingAndDeserializingVeryLargeDictionaryNetworkVariables_ValuesAreSerializedCorrectly(
 
             [Values(typeof(byte), typeof(ulong), typeof(Vector2), typeof(HashMapKeyClass))] Type keyType,
@@ -4798,6 +4835,7 @@ namespace Unity.Netcode.RuntimeTests
 #endif
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void TestManagedINetworkSerializableNetworkVariablesDeserializeInPlace()
         {
             var variable = new NetworkVariable<ManagedNetworkSerializableType>
@@ -4834,6 +4872,7 @@ namespace Unity.Netcode.RuntimeTests
         }
 
         [Test]
+        [UnityCoreClrExplicitDisabled("https://jira.unity3d.com/browse/UUM-149592", "NGO NetworkVariable serialization codegen not generated for some types on CoreCLR (falls back to FallbackSerializer)")]
         public void TestUnmnagedINetworkSerializableNetworkVariablesDeserializeInPlace()
         {
             var variable = new NetworkVariable<UnmanagedNetworkSerializableType>

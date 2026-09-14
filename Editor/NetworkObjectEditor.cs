@@ -1,17 +1,24 @@
 using System.Collections.Generic;
-#if BYPASS_DEFAULT_ENUM_DRAWER && MULTIPLAYER_SERVICES_SDK_INSTALLED
-using System.Linq;
+#if UNIFIED_NETCODE
+#if UNIFIED_NETCODE_7_0_0
+using Unity.Netcode.Editor;
+#else
+using Unity.NetCode;
+using Unity.NetCode.Editor;
+#endif
 #endif
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Scripting.APIUpdating;
 
-namespace Unity.Netcode.Editor
+namespace Unity.Netcode.GameObjects.Editor
 {
     /// <summary>
     /// The <see cref="CustomEditor"/> for <see cref="NetworkObject"/>
     /// </summary>
     [CustomEditor(typeof(NetworkObject), true)]
     [CanEditMultipleObjects]
+    [MovedFrom(true, "Unity.Netcode.Editor", "Unity.Netcode.Editor", null)]
     public class NetworkObjectEditor : UnityEditor.Editor
     {
         private const NetworkObject.OwnershipStatus k_AllOwnershipFlags = NetworkObject.OwnershipStatus.RequestRequired | NetworkObject.OwnershipStatus.Transferable | NetworkObject.OwnershipStatus.Distributable;
@@ -23,6 +30,34 @@ namespace Unity.Netcode.Editor
 
         private static readonly string[] k_HiddenFields = { "m_Script" };
 
+#if UNIFIED_NETCODE
+        /// <summary>
+        /// Register for the GhostObject removal event.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void OnApplicationStart()
+        {
+            GhostObjectEditor.OnGhostObjectPreRemoval = OnGhostObjectPreRemoval;
+        }
+
+        /// <summary>
+        /// Callback to remove the GhostBehaviours prior to removing GhostObject.
+        /// </summary>
+        /// <param name="gameObject">The <see cref="GameObject"/> with the <see cref="GhostObject"/> component being removed.</param>
+        private static void OnGhostObjectPreRemoval(GameObject gameObject)
+        {
+            var ghostBehaviours = gameObject.GetComponentsInChildren<GhostBehaviour>();
+            for (int i = ghostBehaviours.Length - 1; i >= 0; i--)
+            {
+                DestroyImmediate(ghostBehaviours[i], true);
+            }
+            var networkObject = gameObject.GetComponent<NetworkObject>();
+            networkObject.GhostObject = null;
+            networkObject.HasGhost = false;
+            networkObject.HadBridge = true;
+        }
+#endif
+
         private void Initialize()
         {
             if (m_Initialized)
@@ -32,6 +67,9 @@ namespace Unity.Netcode.Editor
 
             m_Initialized = true;
             m_NetworkObject = (NetworkObject)target;
+#if UNIFIED_NETCODE
+            m_NetworkObject.UnifiedValidation();
+#endif
         }
 
         /// <inheritdoc/>
@@ -67,10 +105,6 @@ namespace Unity.Netcode.Editor
                 EditorGUILayout.Toggle(nameof(NetworkObject.IsOwner), m_NetworkObject.IsOwner);
                 EditorGUILayout.Toggle(nameof(NetworkObject.IsOwnedByServer), m_NetworkObject.IsOwnedByServer);
                 EditorGUILayout.Toggle(nameof(NetworkObject.IsPlayerObject), m_NetworkObject.IsPlayerObject);
-#pragma warning disable CS0618 // Type or member is obsolete
-                // TODO-3.x: Update name in 3.x branch
-                EditorGUILayout.Toggle(nameof(NetworkObject.IsSceneObject), m_NetworkObject.InScenePlaced);
-#pragma warning restore CS0618 // Type or member is obsolete
                 EditorGUILayout.Toggle(nameof(NetworkObject.DestroyWithScene), m_NetworkObject.DestroyWithScene);
                 EditorGUILayout.TextField(nameof(NetworkObject.NetworkManager), m_NetworkObject.NetworkManager == null ? "null" : m_NetworkObject.NetworkManager.gameObject.name);
                 GUI.enabled = guiEnabled;
@@ -184,52 +218,4 @@ namespace Unity.Netcode.Editor
             NetworkBehaviourEditor.CheckForNetworkObject(m_GameObject, true);
         }
     }
-
-    // Keeping this here just in case, but it appears that in Unity 6 the visual bugs with
-    // enum flags is resolved
-#if BYPASS_DEFAULT_ENUM_DRAWER && MULTIPLAYER_SERVICES_SDK_INSTALLED
-    [CustomPropertyDrawer(typeof(NetworkObject.OwnershipStatus))]
-    public class NetworkObjectOwnership : PropertyDrawer
-    {
-        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-        {
-            label = EditorGUI.BeginProperty(position, label, property);
-            // Don't allow modification while in play mode
-            EditorGUI.BeginDisabledGroup(EditorApplication.isPlaying);
-
-            // This is a temporary work around due to EditorGUI.EnumFlagsField having a bug in how it displays mask values.
-            // For now, we will just display the flags as a toggle and handle the masking of the value ourselves.
-            EditorGUILayout.BeginHorizontal();
-            var names = System.Enum.GetNames(typeof(NetworkObject.OwnershipStatus)).ToList();
-            names.RemoveAt(0);
-            var value = property.enumValueFlag;
-            var compareValue = 0x01;
-            GUILayout.Label(label);
-            foreach (var name in names)
-            {
-                var isSet = (value & compareValue) > 0;
-                isSet = GUILayout.Toggle(isSet, name);
-                if (isSet)
-                {
-                    value |= compareValue;
-                }
-                else
-                {
-                    value &= ~compareValue;
-                }
-                compareValue = compareValue << 1;
-            }
-            property.enumValueFlag = value;
-            EditorGUILayout.EndHorizontal();
-
-            // The below can cause visual anomalies and/or throws an exception within the EditorGUI itself (index out of bounds of the array). and has
-            // The visual anomaly is when you select one field it is set in the drop down but then the flags selection in the popup menu selects more items
-            // even though if you exit the popup menu the flag setting is correct.
-            // var ownership = (NetworkObject.OwnershipStatus)EditorGUI.EnumFlagsField(position, label, (NetworkObject.OwnershipStatus)property.enumValueFlag);
-            // property.enumValueFlag = (int)ownership;
-            EditorGUI.EndDisabledGroup();
-            EditorGUI.EndProperty();
-        }
-    }
-#endif
 }

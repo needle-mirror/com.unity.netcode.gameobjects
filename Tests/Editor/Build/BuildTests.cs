@@ -6,7 +6,7 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace Unity.Netcode.EditorTests
+namespace Unity.Netcode.GameObjects.EditorTests
 {
     internal class BuildTests
     {
@@ -25,6 +25,13 @@ namespace Unity.Netcode.EditorTests
 
             if (buildTargetSupported)
             {
+                // Netcode for Entities' build preprocessor writes an asset under this folder and errors if the parent does not already exist.
+                if (!AssetDatabase.IsValidFolder("Assets/netcode-build-assets-temp"))
+                {
+                    AssetDatabase.CreateFolder("Assets", "netcode-build-assets-temp");
+                    AssetDatabase.Refresh();
+                }
+
                 var buildReport = BuildPipeline.BuildPlayer(
                     new[] { Path.Combine(packagePath, DefaultBuildScenePath) },
                     Path.Combine(Path.GetDirectoryName(Application.dataPath), "Builds", nameof(BuildTests)),

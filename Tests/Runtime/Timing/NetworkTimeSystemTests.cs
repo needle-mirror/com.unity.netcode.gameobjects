@@ -1,5 +1,6 @@
 using System.Collections;
 using NUnit.Framework;
+using Unity.Netcode.GameObjects.Timing;
 using Unity.Netcode.TestHelpers.Runtime;
 using UnityEngine;
 using UnityEngine.Assertions.Comparers;
@@ -22,6 +23,8 @@ namespace Unity.Netcode.RuntimeTests
         {
             // TODO: [CmbServiceTests] if this test is deemed needed to test against the CMB server then update this test.
             NetcodeIntegrationTestHelpers.IgnoreIfServiceEnviromentVariableSet();
+            // Excluding from unified tests. If deemed needed, update test, then  remove.
+            NetcodeIntegrationTestHelpers.IgnoreIfUnifiedTestsEnvironmentVariableSet();
         }
 
         [SetUp]

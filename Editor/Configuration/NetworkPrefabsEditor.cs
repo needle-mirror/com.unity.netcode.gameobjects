@@ -1,14 +1,16 @@
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
+using UnityEngine.Scripting.APIUpdating;
 
-namespace Unity.Netcode.Editor
+namespace Unity.Netcode.GameObjects.Editor
 {
     /// <summary>
     /// The custom editor for the <see cref="NetworkPrefabsList"/> <see cref="ScriptableObject"/>.
     /// </summary>
     [CustomEditor(typeof(NetworkPrefabsList), true)]
     [CanEditMultipleObjects]
+    [MovedFrom(true, "Unity.Netcode.Editor", "Unity.Netcode.Editor", null)]
     public class NetworkPrefabsEditor : UnityEditor.Editor
     {
         private ReorderableList m_NetworkPrefabsList;

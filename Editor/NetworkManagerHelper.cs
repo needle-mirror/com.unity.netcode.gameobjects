@@ -1,17 +1,19 @@
 using System.Collections.Generic;
 using System.Linq;
-using Unity.Netcode.Editor.Configuration;
+using Unity.Netcode.GameObjects.Editor.Configuration;
 using Unity.Netcode.Logging;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Scripting.APIUpdating;
 
-namespace Unity.Netcode.Editor
+namespace Unity.Netcode.GameObjects.Editor
 {
 #if UNITY_EDITOR
     /// <summary>
     /// Specialized editor specific NetworkManager code
     /// </summary>
+    [MovedFrom(true, "Unity.Netcode.Editor", "Unity.Netcode.Editor", null)]
     public class NetworkManagerHelper : NetworkManager.INetworkManagerHelper
     {
         internal static NetworkManagerHelper Singleton;

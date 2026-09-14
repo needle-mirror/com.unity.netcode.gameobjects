@@ -6,6 +6,15 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using NUnit.Framework;
+#if UNIFIED_NETCODE
+#if UNIFIED_NETCODE_7_0_0
+using EntitiesNetcode = Unity.Netcode.Netcode;
+#else
+using Unity.NetCode;
+using EntitiesNetcode = Unity.NetCode.Netcode;
+#endif
+#endif
+using Unity.Netcode.GameObjects.Timing;
 using Unity.Netcode.RuntimeTests;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
@@ -223,7 +232,17 @@ namespace Unity.Netcode.TestHelpers.Runtime
             /// <summary>
             /// Denotes that distributed authority is being used.
             /// </summary>
-            DAHost
+            DAHost,
+#if UNIFIED_NETCODE
+            /// <summary>
+            /// Use N4E-backed hybrid spawning in server mode
+            /// </summary>
+            UnifiedServer,
+            /// <summary>
+            /// Use N4E-backed hybrid spawning in host mode
+            /// </summary>
+            UnifiedHost
+#endif
         }
 
         /// <summary>
@@ -391,6 +410,107 @@ namespace Unity.Netcode.TestHelpers.Runtime
         {
             return m_UseCmbService;
         }
+
+#if UNIFIED_NETCODE
+        /// <summary>
+        /// Indicates whether the currently running test is using hybrid prefabs via the unified (NGO + N4E) API.
+        /// </summary>
+        /// <remarks>Can only be true if <see cref="UseUnifiedTests"/> returns true.</remarks>
+        protected bool m_UseUnifiedTests { get; private set; }
+
+        private string m_UseUnifiedTestsEnvString = null;
+        private bool m_UseUnifiedTestsEnv;
+
+        /// <summary>
+        /// Will check the environment variable once and then always return the results
+        /// of the first check.
+        /// </summary>
+        /// <remarks>
+        /// This resets its properties during <see cref="OnOneTimeTearDown"/>, so it will
+        /// check the environment variable once per test set.
+        /// </remarks>
+        /// <returns><see cref="true"/> or <see cref="false"/></returns>
+        private bool GetUnifiedTestsEnvironmentVariable()
+        {
+            if (!m_UseUnifiedTestsEnv && m_UseUnifiedTestsEnvString == null)
+            {
+                m_UseUnifiedTestsEnvString = NetcodeIntegrationTestHelpers.GetUnifiedTestsEnvironmentVariable();
+                if (bool.TryParse(m_UseUnifiedTestsEnvString.ToLower(), out bool isTrue))
+                {
+                    m_UseUnifiedTestsEnv = isTrue;
+                }
+                else
+                {
+                    Debug.LogWarning($"The UNIFIED_TESTS ({m_UseUnifiedTestsEnvString}) value is an invalid bool string. {nameof(m_UseUnifiedTests)} is being set to false.");
+                    m_UseUnifiedTestsEnv = false;
+                }
+            }
+            // A CMB service run always wins: distributed authority is not compatible with hybrid prefab spawning.
+            return m_UseUnifiedTestsEnv && !GetServiceEnvironmentVariable();
+        }
+
+        /// <summary>
+        /// Indicates whether this test's hybrid prefab cases have been validated against the unified API.
+        /// </summary>
+        /// <remarks>
+        /// Defaults to false, which makes hybrid prefab test cases opt-in. Unified features are brought
+        /// online one feature set at a time, and because NUnit expands an enum parameter to every member
+        /// most <see cref="HostOrServer.UnifiedHost"/> / <see cref="HostOrServer.UnifiedServer"/> cases
+        /// exist without anyone having written them.
+        /// Override to return true once a test's hybrid prefab cases pass.
+        /// </remarks>
+        /// <returns><see cref="true"/> if this test should run its hybrid prefab cases; otherwise it returns <see cref="false"/>.</returns>
+        protected virtual bool UseUnifiedTests()
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// Ignores the current test case unless it is one the active test pass selects.
+        /// </summary>
+        /// <remarks>Relies on <see cref="Assert.Ignore(string)"/> throwing, so it returns only when the test should run.</remarks>
+        private void ApplyUnifiedTestFilter()
+        {
+            // Hybrid prefab test cases exist on every test that takes a HostOrServer, because NUnit expands
+            // an enum parameter to all of its members. They only run during a unified test pass.
+            if (m_AllPrefabsAsHybrid && !GetUnifiedTestsEnvironmentVariable())
+            {
+                Assert.Ignore(NetcodeIntegrationTestHelpers.IgnoredWithoutUnifiedTestsReason);
+            }
+            // Within a unified test pass a hybrid prefab test case still has to opt in via UseUnifiedTests.
+            if (m_AllPrefabsAsHybrid && !m_UseUnifiedTests)
+            {
+                Assert.Ignore(NetcodeIntegrationTestHelpers.NotOptedInForUnifiedTestsReason);
+            }
+            // Everything that is not a hybrid prefab test case is skipped during a unified test pass. Those
+            // tests have already run on the supported editors, and this pass only validates the unified API.
+            if (!m_AllPrefabsAsHybrid && GetUnifiedTestsEnvironmentVariable())
+            {
+                Assert.Ignore(NetcodeIntegrationTestHelpers.IgnoredForUnifiedTestsReason);
+            }
+        }
+
+        /// <summary>
+        /// Applies the unified test pass filtering for a test that takes its <see cref="HostOrServer"/> as a
+        /// test method parameter rather than as a fixture argument. Call it before starting any instances.
+        /// </summary>
+        /// <remarks>
+        /// The fixture constructor never sees a test method parameter, so <see cref="OneTimeSetup"/> cannot
+        /// filter these cases: it runs once for the whole fixture and the value is not known yet. NUnit still
+        /// expands the enum to every member, so the <see cref="HostOrServer.UnifiedServer"/> and
+        /// <see cref="HostOrServer.UnifiedHost"/> cases are generated whether or not anyone wrote them.
+        /// </remarks>
+        /// <param name="hostOrServer">The <see cref="HostOrServer"/> the test method was invoked with.</param>
+        protected void ApplyUnifiedTestFilter(HostOrServer hostOrServer)
+        {
+            m_AllPrefabsAsHybrid = hostOrServer == HostOrServer.UnifiedServer || hostOrServer == HostOrServer.UnifiedHost;
+            if (m_AllPrefabsAsHybrid && GetUnifiedTestsEnvironmentVariable())
+            {
+                m_UseUnifiedTests = UseUnifiedTests();
+            }
+            ApplyUnifiedTestFilter();
+        }
+#endif
 
         /// <summary>
         /// Override this virtual method to control what kind of <see cref="NetworkTopologyTypes"/> to use.
@@ -578,12 +698,19 @@ namespace Unity.Netcode.TestHelpers.Runtime
                 Assert.Ignore("[CMB-Server Test Run] Skipping non-distributed authority test.");
                 return;
             }
-            else
-            {
-                // Otherwise, continue with the test
-                InternalOnOneTimeSetup();
-            }
+#if UNIFIED_NETCODE
+            // Only For Unified Tests:
+            // Note: this cannot filter a test that takes its HostOrServer as a test method parameter, since
+            // the value is not known until the method runs. Those call ApplyUnifiedTestFilter themselves.
+            ApplyUnifiedTestFilter();
+#endif
+            // Otherwise, continue with the test
+            InternalOnOneTimeSetup();
         }
+
+#if UNIFIED_NETCODE_7_0_0 && UNITY_EDITOR
+        private bool m_PreviousWarnBatchedTicks;
+#endif
 
         private void InternalOnOneTimeSetup()
         {
@@ -600,6 +727,12 @@ namespace Unity.Netcode.TestHelpers.Runtime
             // Enable NetcodeIntegrationTest auto-label feature
             NetcodeIntegrationTestHelpers.RegisterNetcodeIntegrationTest(true);
 
+#if UNIFIED_NETCODE_7_0_0 && UNITY_EDITOR
+            // Netcode for Entities emits a performance-dependent "Server Tick Batching" warning on loaded CI agents that would fail strict log assertions.
+            m_PreviousWarnBatchedTicks = MultiplayerPlayModePreferences.WarnBatchedTicks;
+            MultiplayerPlayModePreferences.WarnBatchedTicks = false;
+#endif
+
 #if UNITY_INCLUDE_TESTS
             // Provide an external hook to be able to make adjustments to netcode classes prior to running any tests
             NetworkManager.OnOneTimeSetup();
@@ -609,7 +742,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
 
             VerboseDebug($"Exiting {nameof(OneTimeSetup)}");
 
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if DEBUG
             // Default to not log the serialized type not optimized warning message when testing.
             NetworkManager.DisableNotOptimizedSerializedType = true;
 #endif
@@ -626,6 +759,12 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// <returns><see cref="IEnumerator"/></returns>
         protected virtual IEnumerator OnSetup()
         {
+#if UNIFIED_NETCODE
+            if (m_AllPrefabsAsHybrid)
+            {
+                GhostSpawnManager.RegisterPendingGhost = RegisterPendingGhost;
+            }
+#endif
             yield return null;
         }
 
@@ -639,6 +778,12 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// </summary>
         protected virtual void OnInlineSetup()
         {
+#if UNIFIED_NETCODE
+            if (m_AllPrefabsAsHybrid)
+            {
+                GhostSpawnManager.RegisterPendingGhost = RegisterPendingGhost;
+            }
+#endif
         }
 
         /// <summary>
@@ -704,6 +849,24 @@ namespace Unity.Netcode.TestHelpers.Runtime
             }
             VerboseDebug($"Exiting {nameof(SetUp)}");
         }
+
+#if UNIFIED_NETCODE
+        private void RegisterPendingGhost(NetworkObject networkObject, ulong networkObjectId)
+        {
+            var ghost = networkObject.GetComponent<GhostObject>();
+            Assert.IsNotNull(ghost, $"[RegisterPendingGhost][NetworkObject-{networkObjectId}] Has no {nameof(GhostObject)}!");
+            foreach (var networkManager in m_NetworkManagers)
+            {
+                // If the world matches, then register the instance with this NetworkManager's spawn manager.
+                if (networkManager.NetcodeWorld == ghost.World)
+                {
+                    networkManager.SpawnManager.GhostSpawnManager.RegisterGhostPendingSpawn(networkObject, networkObjectId);
+                    return;
+                }
+            }
+            Debug.LogError($"Did not find a world for NetworkObject-{networkObjectId}!!");
+        }
+#endif
 
         /// <summary>
         /// Override this to add components or adjustments to the default player prefab
@@ -832,7 +995,20 @@ namespace Unity.Netcode.TestHelpers.Runtime
             {
                 manager.NetworkConfig.PlayerPrefab = m_PlayerPrefab;
                 SetDistributedAuthorityProperties(manager);
+#if UNIFIED_NETCODE
+                foreach (var pendingPrefab in m_PendingPrefabs)
+                {
+                    var prefab = new NetworkPrefab()
+                    {
+                        Prefab = pendingPrefab
+                    };
+                    manager.NetworkConfig.Prefabs.Add(prefab);
+                }
+#endif
             }
+#if UNIFIED_NETCODE
+            m_PendingPrefabs.Clear();
+#endif
 
             // Provides opportunity to allow child derived classes to
             // modify the NetworkManager's configuration before starting.
@@ -1622,12 +1798,28 @@ namespace Unity.Netcode.TestHelpers.Runtime
         }
 
         /// <summary>
+        /// When using hybrid spawning, this handles clean up.
+        /// </summary>
+        protected void UnifiedCleanup()
+        {
+#if UNIFIED_NETCODE
+            if (m_AllPrefabsAsHybrid)
+            {
+                m_PendingPrefabs.Clear();
+                GhostSpawnManager.RegisterPendingGhost = null;
+                CleanupPrefabReferences();
+            }
+#endif
+        }
+
+        /// <summary>
         /// Note: For <see cref="NetworkManagerInstatiationMode.PerTest"/> mode
         /// this is called before ShutdownAndCleanUp.
         /// </summary>
         /// <returns><see cref="IEnumerator"/></returns>
         protected virtual IEnumerator OnTearDown()
         {
+            UnifiedCleanup();
             yield return null;
         }
 
@@ -1636,6 +1828,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// </summary>
         protected virtual void OnInlineTearDown()
         {
+            UnifiedCleanup();
         }
 
         /// <summary>
@@ -1722,6 +1915,10 @@ namespace Unity.Netcode.TestHelpers.Runtime
             // Disable NetcodeIntegrationTest auto-label feature
             NetcodeIntegrationTestHelpers.RegisterNetcodeIntegrationTest(false);
 
+#if UNIFIED_NETCODE_7_0_0 && UNITY_EDITOR
+            MultiplayerPlayModePreferences.WarnBatchedTicks = m_PreviousWarnBatchedTicks;
+#endif
+
             UnloadRemainingScenes();
 
             VerboseDebug($"Exiting {nameof(OneTimeTearDown)}");
@@ -1733,6 +1930,10 @@ namespace Unity.Netcode.TestHelpers.Runtime
             IsRunning = false;
             m_UseCmbServiceEnvString = null;
             m_UseCmbServiceEnv = false;
+#if UNIFIED_NETCODE
+            m_UseUnifiedTestsEnvString = null;
+            m_UseUnifiedTestsEnv = false;
+#endif
         }
 
         /// <summary>
@@ -1771,6 +1972,24 @@ namespace Unity.Netcode.TestHelpers.Runtime
 
                 if (CanDestroyNetworkObject(networkObject))
                 {
+#if UNIFIED_NETCODE
+                    // Handle removing the prefab reference and destroying it
+                    // and then destroying the GhostObject prior to destroying
+                    // a hybrid prefab.
+                    var ghostAdapter = networkObject.GetComponent<GhostObject>();
+                    if (ghostAdapter != null)
+                    {
+                        if (ghostAdapter.prefabReference != null)
+                        {
+                            var prefabReference = ghostAdapter.prefabReference;
+                            prefabReference.Prefab = null;
+                            ghostAdapter.prefabReference = null;
+                            Object.Destroy(prefabReference);
+                        }
+                        Object.Destroy(networkObject.gameObject);
+                        continue;
+                    }
+#endif
                     // Destroy the GameObject that holds the NetworkObject component
                     Object.DestroyImmediate(networkObject.gameObject);
                 }
@@ -2284,6 +2503,10 @@ namespace Unity.Netcode.TestHelpers.Runtime
             Assert.True(WaitForConditionOrTimeOutWithTimeTravel(hooks), $"[Messages Not Recieved] {hooks.GetHooksStillWaiting()}");
         }
 
+#if UNIFIED_NETCODE
+        protected bool m_AllPrefabsAsHybrid = false;
+#endif
+
         /// <summary>
         /// Creates a basic NetworkObject test prefab, assigns it to a new
         /// NetworkPrefab entry, and then adds it to the server and client(s)
@@ -2293,6 +2516,12 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// <returns>The <see cref="GameObject"/> assigned to the new NetworkPrefab entry</returns>
         protected GameObject CreateNetworkObjectPrefab(string baseName)
         {
+#if UNIFIED_NETCODE
+            if (m_AllPrefabsAsHybrid)
+            {
+                return CreateHybridPrefab(baseName, true);
+            }
+#endif
             var prefabCreateAssertError = $"You can only invoke this method during {nameof(OnServerAndClientsCreated)} " +
                                           $"but before {nameof(OnStartedServerAndClients)}!";
             var authorityNetworkManager = GetAuthorityNetworkManager();
@@ -2304,6 +2533,96 @@ namespace Unity.Netcode.TestHelpers.Runtime
             prefabObject.GetComponent<NetworkObject>().Ownership |= NetworkObject.OwnershipStatus.Distributable;
             return prefabObject;
         }
+
+#if UNIFIED_NETCODE
+        // Pending prefabs declared before NetworkManagers instantiated
+        private List<GameObject> m_PendingPrefabs = new List<GameObject>();
+        protected void CleanupPrefabReferences()
+        {
+            foreach (var reference in Object.FindObjectsByType<GhostPrefabReference>())
+            {
+                Object.Destroy(reference);
+            }
+        }
+        protected GameObject CreateHybridPrefab(string baseName, bool moveToDDOL = true)
+        {
+            // Prevent from trying to register/spawn when creating this hybrid prefab
+            var gameObject = new GameObject
+            {
+                name = baseName
+            };
+
+            // Order of operations in how these execute is actually important.
+            // GhostObject should execute 1st.
+            // NetworkObjectBridge 2nd.
+            // NetworkObject 3rd.
+            // NetworkBehaviours will execute in the order they are arranged unless otherwise specified.
+
+            // When adding a Hybrid/Ghost prefab:
+            // - We disabled the GameObject prior to adding the GhostPrefabReference (so IsPrefab() == true).
+            // - Add the GhostObject and GhostPrefabReference
+            // - Then set it back to active.
+            gameObject.SetActive(false);
+            var adapter = gameObject.AddComponent<GhostObject>();
+
+            // Initialize it as a prefab
+            adapter.InitializeAsPrefab();
+
+            // TODO: This might be part of the CreateHybridPrefab parameters
+            // For now, just use normal interpolation until we get integration
+            // tests running.
+            // Once we have validated prediction works and have a working manual
+            // test, we can circle back to this (possibly make that a sub-task
+            // with the dependency to prediction manual test).
+            adapter.SupportedGhostModes = GhostModeMask.Interpolated;
+
+            // Once done with setting up the GhostObject, we can set it back to active in the hierarchy
+            gameObject.SetActive(true);
+
+            // GhostBehaviours that are part of a prefab will not invoke Ghost.InternalAcquireEntityReference
+            // Add the bridge
+            var bridge = gameObject.AddComponent<NetworkObjectBridge>();
+
+            // Now add NGO components
+            var no = gameObject.AddComponent<NetworkObject>();
+
+            // NetworkObject Ghost specific settings
+            no.HasGhost = true;
+            no.GhostObject = adapter;
+            no.HadBridge = true;
+            no.NetworkObjectBridge = bridge;
+
+            // Disable transform synchronization for NetworkObject serialization
+            // since that is handled by the GhostObject.
+            no.SynchronizeTransform = false;
+
+            // Turn it into a test prefab
+            NetcodeIntegrationTestHelpers.MakeNetworkObjectTestPrefab(no);
+            if (moveToDDOL)
+            {
+                Object.DontDestroyOnLoad(gameObject);
+            }
+            var authorityNetworkManager = GetAuthorityNetworkManager();
+            if (authorityNetworkManager == null)
+            {
+                m_PendingPrefabs.Add(gameObject);
+            }
+            else
+            {
+                authorityNetworkManager.AddNetworkPrefab(gameObject);
+                foreach (var clientNetworkManager in m_ClientNetworkManagers)
+                {
+                    if (clientNetworkManager == authorityNetworkManager)
+                    {
+                        continue;
+                    }
+                    clientNetworkManager.AddNetworkPrefab(gameObject);
+                }
+            }
+            return gameObject;
+        }
+#endif
+
 
         /// <summary>
         /// Overloaded method <see cref="SpawnObject(NetworkObject, NetworkManager, bool)"/>
@@ -2350,6 +2669,14 @@ namespace Unity.Netcode.TestHelpers.Runtime
             }
             else
             {
+#if UNIFIED_NETCODE
+                // TODO-FixMe: the Netcode instance is a singleton and might cause issues
+                // assigning this.
+                if (networkObjectToSpawn.HasGhost)
+                {
+                    EntitiesNetcode.Instance.m_ActiveWorld = m_ServerNetworkManager.NetcodeWorld;
+                }
+#endif
                 networkObjectToSpawn.NetworkManagerOwner = m_ServerNetworkManager; // Required to assure the server does the spawning
                 if (spawnAuthority == m_ServerNetworkManager)
                 {
@@ -2407,6 +2734,20 @@ namespace Unity.Netcode.TestHelpers.Runtime
         private GameObject SpawnObject(NetworkObject prefabNetworkObject, NetworkManager owner, bool destroyWithScene = false, bool isPlayerObject = false)
         {
             Assert.IsTrue(prefabNetworkObject.GlobalObjectIdHash > 0, $"{nameof(GameObject)} {prefabNetworkObject.name} has a {nameof(NetworkObject.GlobalObjectIdHash)} value of 0! Make sure to make it a valid prefab before trying to spawn!");
+#if UNIFIED_NETCODE
+            // This has to happen *before* Instantiate, not after. The hybrid prefab is active, so the clone's
+            // GhostObject.Awake runs synchronously inside Object.Instantiate below. The clone is not a prefab
+            // (its prefabReference.Prefab points at the prefab, not at itself), so Awake acquires an entity
+            // reference, which resolves the world to spawn into from the EntitiesNetcode.Instance.m_ActiveWorld singleton.
+            // N4E's rate managers reassign that singleton on every world update, so by the time a test body runs
+            // it points at whichever world updated last - typically a client world - and the spawn is rejected with
+            // "You can only spawn a ghost on a server or during prediction on a client."
+            // TODO-UNIFIED: the Netcode instance is a singleton and might cause issues assigning this.
+            if (prefabNetworkObject.HasGhost)
+            {
+                EntitiesNetcode.Instance.m_ActiveWorld = m_ServerNetworkManager.NetcodeWorld;
+            }
+#endif
             var newInstance = Object.Instantiate(prefabNetworkObject.gameObject);
             var networkObjectToSpawn = newInstance.GetComponent<NetworkObject>();
             SpawnObjectInstance(networkObjectToSpawn, owner, destroyWithScene, isPlayerObject);
@@ -2510,8 +2851,18 @@ namespace Unity.Netcode.TestHelpers.Runtime
                 // Note: For m_DistributedAuthority to be true, the m_NetworkTopologyType must be set to NetworkTopologyTypes.DistributedAuthority
                 hostOrServer = m_DistributedAuthority ? HostOrServer.DAHost : HostOrServer.Host;
             }
+#if UNIFIED_NETCODE
+            m_UseHost = hostOrServer == HostOrServer.Host || hostOrServer == HostOrServer.DAHost || hostOrServer == HostOrServer.UnifiedHost;
+            m_AllPrefabsAsHybrid = (hostOrServer == HostOrServer.UnifiedServer || hostOrServer == HostOrServer.UnifiedHost);
+            // If this is a hybrid prefab test case and the environment variable to run the unified tests
+            // is set, then perform the m_UseUnifiedTests check.
+            if (m_AllPrefabsAsHybrid && GetUnifiedTestsEnvironmentVariable())
+            {
+                m_UseUnifiedTests = UseUnifiedTests();
+            }
+#else
             m_UseHost = hostOrServer == HostOrServer.Host || hostOrServer == HostOrServer.DAHost;
-
+#endif
             // If we are using a distributed authority network topology and the environment variable
             // to use the CMBService is set, then perform the m_UseCmbService check.
             if (m_DistributedAuthority && GetServiceEnvironmentVariable())

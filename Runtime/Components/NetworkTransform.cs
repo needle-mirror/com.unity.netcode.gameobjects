@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Unity.Mathematics;
+using Unity.Netcode.GameObjects.Timing;
 using Unity.Netcode.Runtime;
 using UnityEngine;
 
@@ -1136,7 +1137,7 @@ namespace Unity.Netcode.Components
             /// Uses a 1 to 2 phase interpolation approach where:<br />
             /// <list type="bullet">
             /// <item><description>The first phase lerps from the previous state update value to the next state update value.</description></item>
-            /// <item><description>The second phase (optional) performs lerp smoothing where the current respective transform value is lerped towards the result of the first phase at a rate of 1.0 minus the respective maximum interpolation time.</description></item>
+            /// <item><description>The second phase (optional) performs lerp smoothing where the current respective transform value is lerped towards the result of the first phase at a frame rate independent rate determined by the respective maximum interpolation time.</description></item>
             /// </list>
             /// </summary>
             /// <remarks>
@@ -1156,7 +1157,7 @@ namespace Unity.Netcode.Components
             /// Uses a 1 to 2 phase smooth dampening approach where:<br />
             /// <list type="bullet">
             /// <item><description>The first phase smooth dampens towards the current tick state update being processed by the accumulated delta time relative to the time to target.</description></item>
-            /// <item><description>The second phase (optional) performs lerp smoothing where the current respective transform value is lerped towards the result of the first phase at a rate of delta time divided by the respective max interpolation time.</description></item>
+            /// <item><description>The second phase (optional) performs lerp smoothing where the current respective transform value is lerped towards the result of the first phase at a frame rate independent rate determined by the respective maximum interpolation time.</description></item>
             /// </list>
             /// </summary>
             /// <remarks>
@@ -1236,7 +1237,11 @@ namespace Unity.Netcode.Components
         /// Controls position interpolation smoothing.
         /// </summary>
         /// <remarks>
-        /// When enabled, the <see cref="BufferedLinearInterpolator{T}"/> will apply a final lerping pass where the "t" parameter is calculated by dividing the frame time divided by the <see cref="PositionMaxInterpolationTime"/>.
+        /// When enabled, the <see cref="BufferedLinearInterpolator{T}"/> will apply a final lerping pass towards
+        /// the interpolated result at a rate determined by <see cref="PositionMaxInterpolationTime"/>.<br />
+        /// This smoothing pass is frame rate independent under <see cref="InterpolationTypes.Lerp"/> and
+        /// <see cref="InterpolationTypes.SmoothDampening"/>. <see cref="InterpolationTypes.LegacyLerp"/> keeps its
+        /// original frame rate dependent smoothing, so the same value does not produce the same result there.
         /// </remarks>
         public bool PositionLerpSmoothing = true;
         private bool m_PreviousPositionLerpSmoothing;
@@ -1257,7 +1262,11 @@ namespace Unity.Netcode.Components
         /// Controls rotation interpolation smoothing.
         /// </summary>
         /// <remarks>
-        /// When enabled, the <see cref="BufferedLinearInterpolator{T}"/> will apply a final lerping pass where the "t" parameter is calculated by dividing the frame time divided by the <see cref="RotationMaxInterpolationTime"/>.
+        /// When enabled, the <see cref="BufferedLinearInterpolator{T}"/> will apply a final lerping pass towards
+        /// the interpolated result at a rate determined by <see cref="RotationMaxInterpolationTime"/>.<br />
+        /// This smoothing pass is frame rate independent under <see cref="InterpolationTypes.Lerp"/> and
+        /// <see cref="InterpolationTypes.SmoothDampening"/>. <see cref="InterpolationTypes.LegacyLerp"/> keeps its
+        /// original frame rate dependent smoothing, so the same value does not produce the same result there.
         /// </remarks>
         public bool RotationLerpSmoothing = true;
         private bool m_PreviousRotationLerpSmoothing;
@@ -1278,7 +1287,11 @@ namespace Unity.Netcode.Components
         /// Controls scale interpolation smoothing.
         /// </summary>
         /// <remarks>
-        /// When enabled, the <see cref="BufferedLinearInterpolator{T}"/> will apply a final lerping pass where the "t" parameter is calculated by dividing the frame time divided by the <see cref="ScaleMaxInterpolationTime"/>.
+        /// When enabled, the <see cref="BufferedLinearInterpolator{T}"/> will apply a final lerping pass towards
+        /// the interpolated result at a rate determined by <see cref="ScaleMaxInterpolationTime"/>.<br />
+        /// This smoothing pass is frame rate independent under <see cref="InterpolationTypes.Lerp"/> and
+        /// <see cref="InterpolationTypes.SmoothDampening"/>. <see cref="InterpolationTypes.LegacyLerp"/> keeps its
+        /// original frame rate dependent smoothing, so the same value does not produce the same result there.
         /// </remarks>
         public bool ScaleLerpSmoothing = true;
         private bool m_PreviousScaleLerpSmoothing;
@@ -1805,6 +1818,17 @@ namespace Unity.Netcode.Components
                 m_UseRigidbodyForMotion = m_NetworkRigidbodyInternal.UseRigidBodyForMotion;
             }
         }
+
+#if UNIFIED_NETCODE
+        internal void UnregisterRigidbody()
+        {
+            if (m_NetworkRigidbodyInternal)
+            {
+                m_NetworkRigidbodyInternal = null;
+                m_UseRigidbodyForMotion = false;
+            }
+        }
+#endif
 #endif
 
 #if DEBUG_NETWORKTRANSFORM || UNITY_INCLUDE_TESTS
@@ -3618,6 +3642,15 @@ namespace Unity.Netcode.Components
         /// <inheritdoc/>
         public override void OnNetworkSpawn()
         {
+#if UNIFIED_NETCODE
+            // TODO-UNIFIED:
+            // Provide a notification to users that NetworkTransform component will be removed at runtime if it is a hybrid prefab that is spawned since
+            // it will be using N4E's built in interpolation and extrapolation features.
+            if (NetworkObject.HasGhost)
+            {
+                return;
+            }
+#endif
             Initialize();
 
             if (CanCommitToTransform && !SwitchTransformSpaceWhenParented)
@@ -3707,8 +3740,17 @@ namespace Unity.Netcode.Components
         /// The internal initialization method to allow for internal API adjustments
         /// </summary>
         /// <param name="isOwnershipChange"></param>
-        private void InternalInitialization(bool isOwnershipChange = false)
+        internal virtual void InternalInitialization(bool isOwnershipChange = false)
         {
+#if UNIFIED_NETCODE
+            // TODO-UNIFIED:
+            // Provide a notification to users that NetworkTransform component will be removed at runtime if it is a hybrid prefab that is spawned since
+            // it will be using N4E's built in interpolation and extrapolation features.
+            if (NetworkObject.HasGhost)
+            {
+                return;
+            }
+#endif
             if (!IsSpawned)
             {
                 return;
@@ -3819,17 +3861,6 @@ namespace Unity.Netcode.Components
         #endregion
 
         #region PARENTING AND OWNERSHIP
-        /// <inheritdoc/>
-        public override void OnLostOwnership()
-        {
-            base.OnLostOwnership();
-        }
-
-        /// <inheritdoc/>
-        public override void OnGainedOwnership()
-        {
-            base.OnGainedOwnership();
-        }
         /// <inheritdoc/>
         protected override void OnOwnershipChanged(ulong previous, ulong current)
         {
@@ -4230,14 +4261,13 @@ namespace Unity.Netcode.Components
         // Non-Authority
         private void UpdateInterpolation()
         {
-            // Use the local time because:
-            // Client-Server:
-            // Local time is server time on a host or server.
-            // Local time on clients takes latency into consideration.
-            // Distributed authority:
-            // Local time is used by the authority.
-            // Local time on non-authority takes latency into consid]eration.
-            var timeSystem = m_CachedNetworkManager.LocalTime;
+            // Use the server time, since that is the clock the states being interpolated between are stamped on
+            // (a state's SentTime is derived from its NetworkTick). Deriving the render time from LocalTime
+            // subtracts the tick latency from a clock that already leads ServerTime by roughly that much, which
+            // leaves the render time at or ahead of the newest state that can exist and starves the interpolator.
+            // Measuring from ServerTime is also self correcting, as the tick latency grows with the round trip
+            // time. This is a no-op on a host or server, where both clocks are the same.
+            var timeSystem = m_CachedNetworkManager.ServerTime;
             var currentTime = timeSystem.Time;
 #if COM_UNITY_MODULES_PHYSICS || COM_UNITY_MODULES_PHYSICS2D
             var cachedDeltaTime = m_UseRigidbodyForMotion ? m_CachedNetworkManager.RealTimeProvider.FixedDeltaTime : m_CachedNetworkManager.RealTimeProvider.DeltaTime;
@@ -4701,7 +4731,10 @@ namespace Unity.Netcode.Components
         {
             if (networkManager.IsListening)
             {
-                return (float)networkManager.LocalTime.TimeTicksAgo(networkManager.NetworkTimeSystem.TickLatency + InterpolationBufferTickOffset).Time;
+                // The number of ticks the interpolators run behind, as a duration. This is not a point in time:
+                // it does not grow as the session runs.
+                var ticksBehind = networkManager.NetworkTimeSystem.TickLatency + InterpolationBufferTickOffset;
+                return (float)(ticksBehind * networkManager.ServerTime.FixedDeltaTimeAsDouble);
             }
             return 0f;
         }

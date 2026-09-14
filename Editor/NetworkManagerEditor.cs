@@ -2,15 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Unity.Netcode.Editor.Configuration;
+using Unity.Netcode.GameObjects.Editor.Configuration;
 using Unity.Netcode.Logging;
 using UnityEditor;
 using UnityEngine;
 #if UNITY_6000_5_OR_NEWER
 using UnityEngine.Assemblies;
 #endif
+using UnityEngine.Scripting.APIUpdating;
 
-namespace Unity.Netcode.Editor
+namespace Unity.Netcode.GameObjects.Editor
 {
     /// <summary>
     /// This <see cref="CustomEditor"/> handles the translation between the <see cref="NetworkConfig"/> and
@@ -18,6 +19,7 @@ namespace Unity.Netcode.Editor
     /// </summary>
     [CustomEditor(typeof(NetworkManager), true)]
     [CanEditMultipleObjects]
+    [MovedFrom(true, "Unity.Netcode.Editor", "Unity.Netcode.Editor", null)]
     public class NetworkManagerEditor : NetcodeEditorBase<NetworkManager>
     {
         private static GUIStyle s_CenteredWordWrappedLabelStyle;

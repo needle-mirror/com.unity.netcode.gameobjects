@@ -1,17 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Unity.Netcode.Editor.Configuration;
+using Unity.Netcode.GameObjects.Editor.Configuration;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Scripting.APIUpdating;
 
-namespace Unity.Netcode.Editor
+namespace Unity.Netcode.GameObjects.Editor
 {
     /// <summary>
     /// The <see cref="CustomEditor"/> for <see cref="NetworkBehaviour"/>
     /// </summary>
     [CustomEditor(typeof(NetworkBehaviour), true)]
     [CanEditMultipleObjects]
+    [MovedFrom(true, "Unity.Netcode.Editor", "Unity.Netcode.Editor", null)]
     public class NetworkBehaviourEditor : UnityEditor.Editor
     {
         private bool m_Initialized;
@@ -327,7 +329,7 @@ namespace Unity.Netcode.Editor
         /// </summary>
         /// <param name="transform">The current <see cref="Transform"/> we are inspecting for a parent</param>
         /// <returns>the root parent for the first <see cref="Transform"/> passed into the method</returns>
-        [Obsolete("Use transform.root instead")]
+        [Obsolete("Use transform.root instead", true)]
         public static Transform GetRootParentTransform(Transform transform) => transform.root;
 
         /// <summary>

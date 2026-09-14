@@ -1,7 +1,8 @@
 using NUnit.Framework;
+using Unity.Netcode.GameObjects.Timing;
 using UnityEngine;
 
-namespace Unity.Netcode.EditorTests
+namespace Unity.Netcode.GameObjects.EditorTests
 {
     internal class ServerNetworkTimeSystemTests
     {
@@ -31,5 +32,3 @@ namespace Unity.Netcode.EditorTests
 
     }
 }
-
-

@@ -355,6 +355,11 @@ namespace Unity.Netcode
             return false;
         }
 
+#if UNIFIED_NETCODE
+        internal bool HasGhostPrefabs { get; private set; }
+#endif
+
+
         /// <summary>
         /// Configures <see cref="NetworkPrefabOverrideLinks"/> for the given <see cref="NetworkPrefab"/>
         /// </summary>
@@ -372,6 +377,14 @@ namespace Unity.Netcode
 
             uint source = networkPrefab.SourcePrefabGlobalObjectIdHash;
             uint target = networkPrefab.TargetPrefabGlobalObjectIdHash;
+
+#if UNIFIED_NETCODE
+            if (networkPrefab.HasGhost)
+            {
+                HasGhostPrefabs = true;
+            }
+#endif
+
             // Make sure the prefab isn't already registered.
             if (NetworkPrefabOverrideLinks.ContainsKey(source))
             {

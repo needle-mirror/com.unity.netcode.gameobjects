@@ -2,11 +2,13 @@
   "name": "com.unity.netcode.gameobjects",
   "displayName": "Netcode for GameObjects",
   "description": "Netcode for GameObjects is a high-level netcode SDK that provides networking capabilities to GameObject/MonoBehaviour workflows within Unity and sits on top of underlying transport layer.",
-  "version": "2.13.2",
-  "unity": "6000.0",
+  "version": "3.0.0",
+  "unity": "6000.7",
+  "unityRelease": "0b1",
   "dependencies": {
     "com.unity.nuget.mono-cecil": "1.11.4",
-    "com.unity.transport": "2.6.0"
+    "com.unity.transport": "6.7.0",
+    "com.unity.netcode": "7.0.0"
   },
   "samples": [
     {
@@ -16,15 +18,15 @@
     }
   ],
   "_upm": {
-    "changelog": "### Fixed\n\n- Issue where in a distributed authority session changing a NetworkVariable prior to changing ownership in the same call-stack would result in the NetworkVariable not being synchronized. (#4107)\n- Resolved GC allocations in some hot paths. (#4119)\n- Issue with not being able to spawn initially disabled in-scene placed objects. (#4093)\n- Issue with pre-instantiated network prefab instances being marked as in-scene placed. Now pre-instantiated network prefabs are dynamically spawned. (#4093)\n- Issue where a user could spawn runtime created `NetworkObject` that has a GlobalObjectIdHash of zero. These are not valid instances and will no longer be allowed to spawn. (#4093)"
+    "changelog": "### Added\n\n- Netcode for Entities (`com.unity.netcode` 7.0.0) is now a hard dependency, so installing Netcode for GameObjects also brings it, and its own dependencies (Entities, Burst, Collections), into the project.\n\n### Changed\n\n- All editor assembly definitions are renamed with `Unity.Netcode.GameObjects.x` variants\n  - `Unity.Netcode.Editor` → `Unity.Netcode.GameObjects.Editor`\n  - `Unity.Netcode.Editor.CodeGen` → `Unity.Netcode.GameObjects.Editor.CodeGen`\n  - `Unity.Netcode.Editor.PackageChecker` → `Unity.Netcode.GameObjects.Editor.PackageChecker`\n  - `Unity.Netcode.Editor.Tests` → `Unity.Netcode.GameObjects.Editor.Tests`\n- The timing types moved out of the `Unity.Netcode` namespace into `Unity.Netcode.GameObjects.Timing`. The assembly is unchanged, and existing scripts are migrated automatically when the package is upgraded. The exception is a reference another installed package still resolves under `Unity.Netcode`: the updater only rewrites references that fail to resolve, so those have to be updated by hand. A reference reached through a namespace alias is also left alone, and reports as a compile error naming the type.\n  - `Unity.Netcode.NetworkTime` → `Unity.Netcode.GameObjects.Timing.NetworkTime`\n  - `Unity.Netcode.NetworkTimeSystem` → `Unity.Netcode.GameObjects.Timing.NetworkTimeSystem`\n  - `Unity.Netcode.NetworkTickSystem` → `Unity.Netcode.GameObjects.Timing.NetworkTickSystem`\n\n### Deprecated\n\n- Several APIs that were already marked `[Obsolete]` with a warning now raise a compile error instead (they are not removed yet)."
   },
   "upmCi": {
-    "footprint": "a1729aea1a635b58232b4c95cbb1b6e22d2bde9b"
+    "footprint": "5a7ecc0fc65f0ce5909662770345266e2c3aa03f"
   },
-  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.13/manual/index.html",
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@3.0/manual/index.html",
   "repository": {
     "url": "https://github.com/Unity-Technologies/com.unity.netcode.gameobjects.git",
     "type": "git",
-    "revision": "6fe1e74e3b4891027edeb0a4e0f1ef6ce5c508bd"
+    "revision": "d2688510b50c6ca2ecd270819aaf9b66a8395901"
   }
 }

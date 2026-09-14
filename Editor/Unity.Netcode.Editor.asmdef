@@ -1,13 +1,15 @@
 {
-    "name": "Unity.Netcode.Editor",
-    "rootNamespace": "Unity.Netcode.Editor",
+    "name": "Unity.Netcode.GameObjects.Editor",
+    "rootNamespace": "Unity.Netcode.GameObjects.Editor",
     "references": [
         "Unity.Netcode.Runtime",
         "Unity.Netcode.Components",
         "Unity.Services.Relay",
         "Unity.Networking.Transport",
         "Unity.Services.Core",
-        "Unity.Services.Authentication"
+        "Unity.Services.Authentication",
+        "GUID:953adc2a6b8b4e3c8df5b728bcd546e9",
+        "GUID:eb8cf780bf058694ebf7ec5cf5b8cfa3"
     ],
     "includePlatforms": [
         "Editor"
@@ -19,6 +21,11 @@
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [
+        {
+            "name": "com.unity.netcode",
+            "expression": "7.0.0",
+            "define": "UNIFIED_NETCODE_7_0_0"
+        },
         {
             "name": "com.unity.multiplayer.tools",
             "expression": "",
@@ -43,6 +50,11 @@
             "name": "com.unity.services.multiplayer",
             "expression": "0.2.0",
             "define": "MULTIPLAYER_SERVICES_SDK_INSTALLED"
+        },
+        {
+            "name": "com.unity.multiplayer.playmode",
+            "expression": "0.1.0",
+            "define": "UNITY_MULTIPLAYER_PLAYMODE"
         }
     ],
     "noEngineReferences": false

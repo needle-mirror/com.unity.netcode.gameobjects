@@ -215,6 +215,52 @@ namespace Unity.Netcode.TestHelpers.Runtime
             }
         }
 
+        /// <summary>
+        /// Gets the UNIFIED_TESTS environment variable or returns "false" if it does not exist
+        /// </summary>
+        /// <returns><see cref="string"/></returns>
+        internal static string GetUnifiedTestsEnvironmentVariable()
+        {
+#if UNIFIED_TESTS
+            return "true";
+#else
+            return Environment.GetEnvironmentVariable("UNIFIED_TESTS") ?? "false";
+#endif
+        }
+
+        /// <summary>
+        /// Determines whether this is a unified (NGO + N4E) hybrid prefab test run.
+        /// </summary>
+        /// <remarks>
+        /// A CMB service run always wins: distributed authority is not compatible with hybrid prefab
+        /// spawning, so the two can never be the same run.
+        /// </remarks>
+        /// <returns><see cref="true"/> or <see cref="false"/></returns>
+        internal static bool UnifiedTestRun()
+        {
+            if (bool.TryParse(GetCMBServiceEnvironentVariable(), out bool useCmbService) ? useCmbService : false)
+            {
+                return false;
+            }
+            return bool.TryParse(GetUnifiedTestsEnvironmentVariable(), out bool isTrue) ? isTrue : false;
+        }
+
+        internal static readonly string IgnoredForUnifiedTestsReason = "[Unified Test Run] Skipping non-hybrid prefab test.";
+        internal static readonly string IgnoredWithoutUnifiedTestsReason = "[Non-Unified Test Run] Skipping hybrid prefab test.";
+        internal static readonly string NotOptedInForUnifiedTestsReason = "[Unified Test Run] Skipping hybrid prefab test that has not opted in via UseUnifiedTests.";
+
+        /// <summary>
+        /// Use for non <see cref="NetcodeIntegrationTest"/> derived integration tests to automatically ignore the
+        /// test if running a unified (NGO + N4E) hybrid prefab test pass.
+        /// </summary>
+        internal static void IgnoreIfUnifiedTestsEnvironmentVariableSet()
+        {
+            if (UnifiedTestRun())
+            {
+                Assert.Ignore(IgnoredForUnifiedTestsReason);
+            }
+        }
+
         private static readonly string k_TransportHost = GetAddressToBind();
         private static readonly ushort k_TransportPort = GetPortToBind();
 
@@ -540,7 +586,9 @@ namespace Unity.Netcode.TestHelpers.Runtime
                     }
                     return;
                 }
-                networkManager.SceneManager.ServerSceneHandleToClientSceneHandle.Add(scene.handle, scene.handle);
+
+                // The server already registers every scene loaded prior to startup, so only add the test runner scene if it is not already there.
+                networkManager.SceneManager.ServerSceneHandleToClientSceneHandle.TryAdd(scene.handle, scene.handle);
             }
         }
 
@@ -742,18 +790,17 @@ namespace Unity.Netcode.TestHelpers.Runtime
             Assert.IsFalse(authorityNetworkManager.IsListening, prefabCreateAssertError);
 
             var gameObject = CreateNetworkObject(baseName);
-            var networkPrefab = new NetworkPrefab() { Prefab = gameObject };
 
             // We could refactor this test framework to share a NetworkPrefabList instance, but at this point it's
             // probably more trouble than it's worth to verify these lists stay in sync across all tests...
-            authorityNetworkManager.NetworkConfig.Prefabs.Add(networkPrefab);
+            authorityNetworkManager.AddNetworkPrefab(gameObject);
             foreach (var clientNetworkManager in clients)
             {
                 if (clientNetworkManager == authorityNetworkManager)
                 {
                     continue;
                 }
-                clientNetworkManager.NetworkConfig.Prefabs.Add(new NetworkPrefab() { Prefab = gameObject });
+                clientNetworkManager.AddNetworkPrefab(gameObject);
             }
             return gameObject;
         }
@@ -764,7 +811,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// <param name="networkObjectRoot"><see cref="GameObject"/></param>
         /// <param name="server"><see cref="NetworkManager"/></param>
         /// <param name="clients">An array of <see cref="NetworkManager"/>s</param>
-        [Obsolete("This method is no longer valid or used.", false)]
+        [Obsolete("This method is no longer valid or used.", true)]
         public static void MarkAsSceneObjectRoot(GameObject networkObjectRoot, NetworkManager server, NetworkManager[] clients)
         {
         }
@@ -1126,7 +1173,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// This method is no longer used.
         /// </summary>
         /// <param name="scenesProcessed"><see cref="Action"/></param>
-        [Obsolete("This method is deprecated and no longer used", false)]
+        [Obsolete("This method is deprecated and no longer used", true)]
         public static void SetRefreshAllPrefabsCallback(Action scenesProcessed)
         {
             NetworkObjectRefreshTool.AllScenesProcessed = scenesProcessed;
@@ -1137,7 +1184,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
         /// </summary>
         /// <param name="networkObject"><see cref="NetworkObject"/></param>
         /// <param name="scenesProcessed"><see cref="Action"/></param>
-        [Obsolete("This method is deprecated and no longer used", false)]
+        [Obsolete("This method is deprecated and no longer used", true)]
         public static void RefreshAllPrefabInstances(NetworkObject networkObject, Action scenesProcessed)
         {
             NetworkObjectRefreshTool.AllScenesProcessed = scenesProcessed;

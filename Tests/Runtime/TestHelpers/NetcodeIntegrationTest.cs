@@ -323,6 +323,46 @@ namespace Unity.Netcode.TestHelpers.Runtime
         }
 
         /// <summary>
+        /// Gets the name of the given <see cref="NetworkManager"/> to use in assertion messages:
+        /// - Dedicated server: "Server"
+        /// - Host: "Host"
+        /// - Client: "Client-" followed by its <see cref="NetworkManager.LocalClientId"/>
+        /// </summary>
+        /// <param name="networkManager">The <see cref="NetworkManager"/> to get the name of</param>
+        /// <returns>The name of the <paramref name="networkManager"/></returns>
+        protected string GetDisplayName(NetworkManager networkManager)
+        {
+            if (networkManager.IsServer)
+            {
+                return networkManager.IsHost ? "Host" : "Server";
+            }
+            return $"Client-{networkManager.LocalClientId}";
+        }
+
+        /// <summary>
+        /// Gets the <paramref name="networkManager"/> relative instance of the <see cref="NetworkObject"/> with the given identifier.
+        /// </summary>
+        /// <param name="networkManager">The <see cref="NetworkManager"/> to get the relative instance from</param>
+        /// <param name="networkObjectId">The identifier of the <see cref="NetworkObject"/> wanted</param>
+        /// <returns>The <paramref name="networkManager"/> relative <see cref="NetworkObject"/> instance</returns>
+        protected NetworkObject GetManagersInstance(NetworkManager networkManager, ulong networkObjectId)
+        {
+            Assert.True(networkManager.SpawnManager.SpawnedObjects.ContainsKey(networkObjectId), $"{GetDisplayName(networkManager)} has no spawned {nameof(NetworkObject)} with an identifier of {networkObjectId}!");
+            return networkManager.SpawnManager.SpawnedObjects[networkObjectId];
+        }
+
+        /// <summary>
+        /// Gets the <paramref name="networkManager"/> relative instance of the given <see cref="NetworkObject"/>.
+        /// </summary>
+        /// <param name="networkManager">The <see cref="NetworkManager"/> to get the relative instance from</param>
+        /// <param name="networkObject">Any instance of the <see cref="NetworkObject"/> wanted</param>
+        /// <returns>The <paramref name="networkManager"/> relative <see cref="NetworkObject"/> instance</returns>
+        protected NetworkObject GetManagersInstance(NetworkManager networkManager, NetworkObject networkObject)
+        {
+            return GetManagersInstance(networkManager, networkObject.NetworkObjectId);
+        }
+
+        /// <summary>
         /// Contains each client relative set of player NetworkObject instances
         /// [Client Relative set of player instances][The player instance ClientId][The player instance's NetworkObject]
         /// Example:
@@ -651,6 +691,8 @@ namespace Unity.Netcode.TestHelpers.Runtime
             // In addition to setting the number of clients in the OneTimeSetup, we need to re-apply the number of clients for each unique test
             // in the event that a previous test stopped a client.
             m_NumberOfClients = NumberOfClients;
+            // Clear any time out state left by a previous test so it cannot fail this test's assertions
+            s_GlobalTimeoutHelper.TimedOut = false;
             VerboseDebugLog.Clear();
             VerboseDebug($"Entering {nameof(SetUp)}");
             NetcodeLogAssert = new NetcodeLogAssert();
@@ -1036,7 +1078,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
 
             // Wait for the new client to connect
             var connected = WaitForClientsConnectedOrTimeOutWithTimeTravel();
-            AssertOnTimeout($"{nameof(CreateAndStartNewClientWithTimeTravel)} timed out waiting for all clients to be connected!\n {m_InternalErrorLog}");
+            Assert.IsTrue(connected, $"{nameof(CreateAndStartNewClientWithTimeTravel)} timed out waiting for all clients to be connected!\n {m_InternalErrorLog}");
 
             OnNewClientStartedAndConnected(networkManager);
             if (!connected)
@@ -1419,9 +1461,9 @@ namespace Unity.Netcode.TestHelpers.Runtime
                 if (!m_BypassConnectionTimeout)
                 {
                     // Wait for all clients to connect
-                    WaitForClientsConnectedOrTimeOutWithTimeTravel();
+                    var connected = WaitForClientsConnectedOrTimeOutWithTimeTravel();
 
-                    AssertOnTimeout($"{nameof(StartServerAndClients)} timed out waiting for all clients to be connected!\n {m_InternalErrorLog}");
+                    Assert.IsTrue(connected, $"{nameof(StartServerAndClients)} timed out waiting for all clients to be connected!\n {m_InternalErrorLog}");
 
                     if (m_UseHost || authorityManager.IsHost)
                     {
@@ -1444,8 +1486,8 @@ namespace Unity.Netcode.TestHelpers.Runtime
                     {
                         foreach (var networkManager in m_NetworkManagers)
                         {
-                            WaitForConditionOrTimeOutWithTimeTravel(() => AllPlayerObjectClonesSpawned(networkManager));
-                            AssertOnTimeout($"{nameof(CreateAndStartNewClient)} timed out waiting for all sessions to spawn Client-{networkManager.LocalClientId}'s player object!");
+                            var spawned = WaitForConditionOrTimeOutWithTimeTravel(() => AllPlayerObjectClonesSpawned(networkManager));
+                            Assert.IsTrue(spawned, $"{nameof(CreateAndStartNewClient)} timed out waiting for all sessions to spawn Client-{networkManager.LocalClientId}'s player object!");
                         }
                     }
 
@@ -1546,7 +1588,7 @@ namespace Unity.Netcode.TestHelpers.Runtime
             }
             catch (Exception e)
             {
-                throw e;
+                Debug.LogException(e);
             }
             finally
             {
@@ -1666,6 +1708,9 @@ namespace Unity.Netcode.TestHelpers.Runtime
                 {
                     ShutdownAndCleanUp();
                 }
+
+                // Wait until all the scene from this test are unloaded before starting the next test.
+                yield return WaitForRemainingScenesUnloaded();
             }
 
             if (m_EnableTimeTravel)
@@ -2548,22 +2593,84 @@ namespace Unity.Netcode.TestHelpers.Runtime
         }
 
 
-        private void UnloadRemainingScenes()
+        private const float k_SceneUnloadTimeout = 5.0f;
+        private readonly List<AsyncOperation> m_PendingSceneUnloads = new List<AsyncOperation>();
+
+        /// <returns>true if any scene (other than the test runner scene) is still loading and could not be unloaded yet</returns>
+        private bool UnloadRemainingScenes()
         {
             // Unload any remaining scenes loaded but the test runner scene
             // Note: Some tests only unload the server-side instance, and this
             // just assures no currently loaded scenes will impact the next test
+            Scene testRunnerScene = default;
+            var sceneStillLoading = false;
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
                 var scene = SceneManager.GetSceneAt(i);
-                if (!scene.IsValid() || !scene.isLoaded || scene.name.Contains(NetcodeIntegrationTestHelpers.FirstPartOfTestRunnerSceneName) || !OnCanSceneCleanUpUnload(scene))
+                if (scene.name.Contains(NetcodeIntegrationTestHelpers.FirstPartOfTestRunnerSceneName))
+                {
+                    testRunnerScene = scene;
+                    continue;
+                }
+                if (scene.IsValid() && !scene.isLoaded)
+                {
+                    // Can't unload a scene that is still loading
+                    sceneStillLoading = true;
+                    continue;
+                }
+                if (!scene.IsValid() || !OnCanSceneCleanUpUnload(scene))
                 {
                     continue;
                 }
 
                 VerboseDebug($"Unloading scene {scene.name}-{scene.handle}");
                 var asyncOperation = SceneManager.UnloadSceneAsync(scene);
+                if (asyncOperation != null)
+                {
+                    m_PendingSceneUnloads.Add(asyncOperation);
+                }
             }
+
+            // Ensure the test runner scene is reset to be the active scene.
+            if (testRunnerScene.IsValid())
+            {
+                if (SceneManager.GetActiveScene() != testRunnerScene)
+                {
+                    SceneManager.SetActiveScene(testRunnerScene);
+                }
+
+            }
+
+            return sceneStillLoading;
+        }
+
+        /// <summary>
+        /// Waits (in real time) for all scenes left over by the test to finish unloading.
+        /// Scenes that finish loading after tear down started are also unloaded.
+        /// </summary>
+        private IEnumerator WaitForRemainingScenesUnloaded()
+        {
+            var timeOut = Time.realtimeSinceStartup + k_SceneUnloadTimeout;
+            while (true)
+            {
+                // Pick up any scenes that finished loading after the clean up started
+                var sceneStillLoading = UnloadRemainingScenes();
+
+                // Keep waiting while a scene is still loading so it can be unloaded once it finishes loading
+                if (!sceneStillLoading && m_PendingSceneUnloads.All(c => c.isDone))
+                {
+                    break;
+                }
+
+                if (Time.realtimeSinceStartup >= timeOut)
+                {
+                    Debug.LogWarning($"[{nameof(WaitForRemainingScenesUnloaded)}] Timed out waiting for scenes to unload!");
+                    break;
+                }
+                yield return null;
+            }
+
+            m_PendingSceneUnloads.Clear();
         }
 
         private StringBuilder m_WaitForLog = new StringBuilder();
